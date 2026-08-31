@@ -1,0 +1,49 @@
+# ---- Agent & LLM ----
+langchain>=1.0.0,<2.0.0
+langchain-core>=1.0.0,<2.0.0
+langchain-openai>=1.0.0
+langchain-chroma>=1.0.0
+langchain-text-splitters>=1.0.0
+langgraph>=0.2.0
+openai>=1.50.0
+
+# ---- PDF Processing ----
+docling>=2.0.0
+pymupdf>=1.24.0
+pdfplumber>=0.11.0
+
+# ---- Vector Store & Retrieval ----
+chromadb>=1.0.0
+qdrant-client>=1.12.0
+langchain-qdrant>=0.1.0
+scikit-learn>=1.5.0
+
+# ---- Embedding & ML ----
+sentence-transformers>=3.0.0
+transformers>=4.50.0
+torch>=2.5.0
+numpy>=2.0.0
+huggingface-hub>=0.26.0
+
+# ---- Token Counting (optional, falls back to heuristic) ----
+tiktoken>=0.7.0
+
+# ---- Web API & Server ----
+fastapi>=0.115.0
+uvicorn>=0.34.0
+python-multipart>=0.0.20
+httpx>=0.28.0
+
+# ---- MCP Framework ----
+fastmcp>=3.0.0
+feedparser>=6.0.0
+
+# ---- Config & Env ----
+python-dotenv>=1.2.0
+pyyaml>=6.0
+
+# ---- Data Storage ----
+redis>=5.0.0
+
+# ---- Frontend ----
+streamlit>=1.55.0

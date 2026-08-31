@@ -1,0 +1,122 @@
+# ================================================================
+# MCP (Model Context Protocol) 服务器声明式配置
+# ================================================================
+# 编辑此文件后，可在 Streamlit 侧边栏点击 "🔄 重载 MCP" 热加载，
+# 或在代码中调用 registry.refresh() 重新加载。
+#
+# 环境变量替换语法：
+#   ${VAR}              — 从 .env / 环境变量读取
+#   ${VAR:-default}     — 带默认值（环境变量不存在时使用）
+#
+# 快速接入：选择下方模板，取消 enabled: false 注释，设置 API Key
+# ================================================================
+
+# ---- 全局设置 ----
+settings:
+  # 论文文件根目录（内置 filesystem server 使用）
+  papers_base_dir: "./data"
+  # 外部 MCP Server 连接超时（秒）
+  connect_timeout: 60
+  # 启动失败是否阻止应用启动（false = 降级运行）
+  fail_fast: false
+
+# ---- MCP 服务器定义 ----
+servers:
+
+  # ================================================================
+  # [内置] 本地文件系统 — 开箱即用，零配置
+  # ================================================================
+  filesystem:
+    enabled: true
+    type: builtin
+    description: "论文文件管理（列出/创建/移动/搜索/归类）"
+
+  # ================================================================
+  # [已启用] arXiv — 论文搜索、详情查看、全文下载
+  # 开箱即用，无需额外配置
+  # ================================================================
+  arxiv:
+    enabled: true
+    type: stdio
+    description: "arXiv 论文搜索与全文下载"
+    command: C:\Users\30811\miniconda3\envs\demo\python.exe
+    args: ["-m", "mcp_simple_arxiv"]
+
+
+  
+  # ================================================================
+  # [模板] Brave Search — 联网搜索学术资料
+  # 配置: .env 中设置 BRAVE_API_KEY，然后取消下方 enabled
+  # 获取 API Key: https://brave.com/search/api/
+  # ================================================================
+  # brave_search:
+  #   enabled: true
+  #   type: stdio
+  #   description: "Brave Search 联网搜索"
+  #   command: npx
+  #   args:
+  #     - "-y"
+  #     - "@anthropic-ai/mcp-server-brave-search"
+  #   env:
+  #     BRAVE_API_KEY: "${BRAVE_API_KEY}"
+
+  # ================================================================
+  # [模板] GitHub — 论文复现代码检索
+  # 配置: .env 中设置 GITHUB_TOKEN，然后取消下方 enabled
+  # 获取 Token: https://github.com/settings/tokens
+  # ================================================================
+  # github:
+  #   enabled: true
+  #   type: stdio
+  #   description: "GitHub 仓库搜索与文件管理"
+  #   command: npx
+  #   args:
+  #     - "-y"
+  #     - "@anthropic-ai/mcp-server-github"
+  #   env:
+  #     GITHUB_TOKEN: "${GITHUB_TOKEN}"
+
+  # ================================================================
+  # [模板] PostgreSQL — 论文元数据库查询
+  # 配置: .env 中设置 DATABASE_URL，然后取消下方 enabled
+  # ================================================================
+  # postgres:
+  #   enabled: true
+  #   type: stdio
+  #   description: "PostgreSQL 数据库查询"
+  #   command: npx
+  #   args:
+  #     - "-y"
+  #     - "@anthropic-ai/mcp-server-postgres"
+  #   env:
+  #     DATABASE_URL: "${DATABASE_URL:-postgresql://localhost:5432/papers}"
+
+  # ================================================================
+  # [模板] Slack — 团队协作通知
+  # 配置: .env 中设置 SLACK_BOT_TOKEN，然后取消下方 enabled
+  # 获取 Token: https://api.slack.com/apps
+  # ================================================================
+  # slack:
+  #   enabled: true
+  #   type: stdio
+  #   description: "Slack 消息与频道管理"
+  #   command: npx
+  #   args:
+  #     - "-y"
+  #     - "@anthropic-ai/mcp-server-slack"
+  #   env:
+  #     SLACK_BOT_TOKEN: "${SLACK_BOT_TOKEN}"
+
+  # ================================================================
+  # [自定义] Python MCP Server 示例
+  # ================================================================
+  # my_custom_server:
+  #   enabled: true
+  #   type: stdio
+  #   description: "我的自定义 MCP 工具"
+  #   command: python
+  #   args:
+  #     - "-m"
+  #     - "my_mcp_server"
+  #   env:
+  #     MY_API_KEY: "${MY_API_KEY}"

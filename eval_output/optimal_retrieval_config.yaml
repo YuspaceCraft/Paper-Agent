@@ -1,0 +1,24 @@
+schema_version: '1.0'
+selected_at: '2026-07-20T03:21:14.091004+00:00'
+source_experiment: sparse_k5
+metrics:
+  recall@5: 0.8087
+  precision@5: 0.1861
+  ndcg@5: 0.7115
+  hit@5: 0.8087
+  recall@10: 0.8087
+  precision@10: 0.093
+  ndcg@10: 0.7115
+  hit@10: 0.8087
+  recall@20: 0.8087
+  precision@20: 0.0465
+  ndcg@20: 0.7115
+  hit@20: 0.8087
+  mrr: 0.6829
+config:
+  method: sparse
+  top_k: 5
+  query_rewriting: null
+  metadata_filter: null
+  hyde_model: ''
+regression_warnings: []

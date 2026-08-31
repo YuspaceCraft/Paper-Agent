@@ -1,0 +1,46 @@
+# Secrets
+.env
+
+# Chroma vector store (persisted embeddings)
+chroma_db/
+
+# PDF pipeline output (generated bindings/images/formulas)
+pdf_pipeline/output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Agent checkpoint database (LangGraph SqliteSaver)
+checkpoints.db*
+
+# Model weights / local vector stores (large binaries, not for VCS)
+Qwen3_model/
+jina/
+v1/BGE/
+v1/chroma_db/
+
+# User PDFs / raw data
+data/
+
+# Frontend deps & build output
+web/frontend/node_modules/
+web/frontend/dist/
+
+# Local caches
+.demo/
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db

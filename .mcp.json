@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "arxiv": {
+      "command": "C:/Users/30811/miniconda3/envs/demo/python.exe",
+      "args": ["-m", "mcp_simple_arxiv"],
+      "transport": "stdio",
+      "env": {
+        "FASTMCP_QUIET": "1"
+      }
+    }
+  }
+}

@@ -1,0 +1,279 @@
+{
+  "overall_metrics": {
+    "recall@5": 0.5,
+    "precision@5": 0.1217,
+    "ndcg@5": 0.426,
+    "hit@5": 0.5217,
+    "recall@10": 0.6304,
+    "precision@10": 0.0748,
+    "ndcg@10": 0.4693,
+    "hit@10": 0.6435,
+    "recall@20": 0.7304,
+    "precision@20": 0.043,
+    "ndcg@20": 0.4955,
+    "hit@20": 0.7304,
+    "mrr": 0.4417
+  },
+  "confidence_intervals": {
+    "recall@5": {
+      "mean": 0.5,
+      "ci95_low": 0.4174,
+      "ci95_high": 0.587
+    },
+    "precision@5": {
+      "mean": 0.1217,
+      "ci95_low": 0.0991,
+      "ci95_high": 0.1461
+    },
+    "ndcg@5": {
+      "mean": 0.426,
+      "ci95_low": 0.3431,
+      "ci95_high": 0.5068
+    },
+    "recall@10": {
+      "mean": 0.6304,
+      "ci95_low": 0.5391,
+      "ci95_high": 0.7174
+    },
+    "precision@10": {
+      "mean": 0.0748,
+      "ci95_low": 0.0635,
+      "ci95_high": 0.0861
+    },
+    "ndcg@10": {
+      "mean": 0.4693,
+      "ci95_low": 0.3912,
+      "ci95_high": 0.5459
+    },
+    "recall@20": {
+      "mean": 0.7304,
+      "ci95_low": 0.6435,
+      "ci95_high": 0.8087
+    },
+    "precision@20": {
+      "mean": 0.043,
+      "ci95_low": 0.037,
+      "ci95_high": 0.0487
+    },
+    "ndcg@20": {
+      "mean": 0.4955,
+      "ci95_low": 0.4254,
+      "ci95_high": 0.5714
+    },
+    "mrr": {
+      "mean": 0.4417,
+      "ci95_low": 0.3647,
+      "ci95_high": 0.5219
+    }
+  },
+  "dimension_breakdown": [
+    {
+      "dimension": "difficulty_level",
+      "value": "easy",
+      "count": 20,
+      "recall@5": 0.4,
+      "precision@5": 0.08,
+      "ndcg@5": 0.3509,
+      "mrr": 0.358,
+      "recall@10": 0.5,
+      "precision@10": 0.05,
+      "ndcg@10": 0.3842,
+      "recall@20": 0.6,
+      "precision@20": 0.03,
+      "ndcg@20": 0.4117
+    },
+    {
+      "dimension": "difficulty_level",
+      "value": "hard",
+      "count": 38,
+      "recall@5": 0.6447,
+      "precision@5": 0.1947,
+      "ndcg@5": 0.5465,
+      "mrr": 0.5953,
+      "recall@10": 0.8553,
+      "precision@10": 0.1211,
+      "ndcg@10": 0.6174,
+      "recall@20": 0.9474,
+      "precision@20": 0.0671,
+      "ndcg@20": 0.6429
+    },
+    {
+      "dimension": "difficulty_level",
+      "value": "medium",
+      "count": 57,
+      "recall@5": 0.4386,
+      "precision@5": 0.0877,
+      "ndcg@5": 0.3721,
+      "mrr": 0.3686,
+      "recall@10": 0.5263,
+      "precision@10": 0.0526,
+      "ndcg@10": 0.4004,
+      "recall@20": 0.6316,
+      "precision@20": 0.0316,
+      "ndcg@20": 0.4266
+    },
+    {
+      "dimension": "content_type",
+      "value": "body",
+      "count": 100,
+      "recall@5": 0.45,
+      "precision@5": 0.09,
+      "ndcg@5": 0.3757,
+      "mrr": 0.3771,
+      "recall@10": 0.59,
+      "precision@10": 0.059,
+      "ndcg@10": 0.4214,
+      "recall@20": 0.69,
+      "precision@20": 0.0345,
+      "ndcg@20": 0.4467
+    },
+    {
+      "dimension": "content_type",
+      "value": "unknown",
+      "count": 15,
+      "recall@5": 0.8333,
+      "precision@5": 0.3333,
+      "ndcg@5": 0.7616,
+      "mrr": 0.8722,
+      "recall@10": 0.9,
+      "precision@10": 0.18,
+      "ndcg@10": 0.7885,
+      "recall@20": 1.0,
+      "precision@20": 0.1,
+      "ndcg@20": 0.8209
+    },
+    {
+      "dimension": "generation_mode",
+      "value": "cross_chunk",
+      "count": 15,
+      "recall@5": 0.8333,
+      "precision@5": 0.3333,
+      "ndcg@5": 0.7616,
+      "mrr": 0.8722,
+      "recall@10": 0.9,
+      "precision@10": 0.18,
+      "ndcg@10": 0.7885,
+      "recall@20": 1.0,
+      "precision@20": 0.1,
+      "ndcg@20": 0.8209
+    },
+    {
+      "dimension": "generation_mode",
+      "value": "keyword",
+      "count": 50,
+      "recall@5": 0.16,
+      "precision@5": 0.032,
+      "ndcg@5": 0.1304,
+      "mrr": 0.1588,
+      "recall@10": 0.38,
+      "precision@10": 0.038,
+      "ndcg@10": 0.202,
+      "recall@20": 0.5,
+      "precision@20": 0.025,
+      "ndcg@20": 0.2322
+    },
+    {
+      "dimension": "generation_mode",
+      "value": "semantic",
+      "count": 50,
+      "recall@5": 0.74,
+      "precision@5": 0.148,
+      "ndcg@5": 0.621,
+      "mrr": 0.5954,
+      "recall@10": 0.8,
+      "precision@10": 0.08,
+      "ndcg@10": 0.6408,
+      "recall@20": 0.88,
+      "precision@20": 0.044,
+      "ndcg@20": 0.6612
+    }
+  ],
+  "failure_analysis": [
+    {
+      "query_id": "qa_0e79540e",
+      "query": "task change proposed",
+      "mrr": 0.0,
+      "expected_chunks": [
+        "MV-CC__chunk_0007"
+      ],
+      "actual_top5": [
+        "DEM_Super_Resolution_Guided_by_High_Resolution_Remote_Sensin__chunk_0021",
+        "MV-CC__chunk_0020",
+        "DEM_Super_Resolution_Guided_by_High_Resolution_Remote_Sensin__chunk_0023",
+        "MV-CC__chunk_0015",
+        "RMNet__chunk_0023"
+      ],
+      "analysis": "Chunk MV-CC__chunk_0007 (type=body, tokens=518) not in top results — possible embedding mismatch or content too specific"
+    },
+    {
+      "query_id": "qa_48a6c604",
+      "query": "RSICC / sensing image change caption video model",
+      "mrr": 0.0,
+      "expected_chunks": [
+        "MV-CC__chunk_0000"
+      ],
+      "actual_top5": [
+        "DEM_Super_Resolution_Guided_by_High_Resolution_Remote_Sensin__chunk_0021",
+        "BLIP_CC__chunk_0010",
+        "MV-CC__chunk_0017",
+        "DEM_Super_Resolution_Guided_by_High_Resolution_Remote_Sensin__chunk_0023",
+        "BLIP_CC__chunk_0012"
+      ],
+      "analysis": "Chunk MV-CC__chunk_0000 (type=body, tokens=290) not in top results — possible embedding mismatch or content too specific"
+    },
+    {
+      "query_id": "qa_bdbc0333",
+      "query": "CNN / Convolutional neural networks SRI / shaded relief images dem",
+      "mrr": 0.0,
+      "expected_chunks": [
+        "DEM_Super_Resolution_Guided_by_High_Resolution_Remote_Sensin__chunk_0005"
+      ],
+      "actual_top5": [
+        "BLIP_CC__chunk_0001",
+        "BLIP_CC__chunk_0010",
+        "MV-CC__chunk_0007",
+        "BLIP_CC__chunk_0004",
+        "BLIP_CC__chunk_0009"
+      ],
+      "analysis": "Chunk DEM_Super_Resolution_Guided_by_High_Resolution_Remote_Sensin__chunk_0005 (type=body, tokens=717) not in top results — possible embedding mismatch or content too specific"
+    },
+    {
+      "query_id": "qa_14b11621",
+      "query": "HRSI / high-resolution remote sensing image dem super-resolution",
+      "mrr": 0.0,
+      "expected_chunks": [
+        "DEM_Super_Resolution_Guided_by_High_Resolution_Remote_Sensin__chunk_0000"
+      ],
+      "actual_top5": [
+        "RMNet__chunk_0023",
+        "MV-CC__chunk_0017",
+        "BLIP_CC__chunk_0019",
+        "Pix4Cap__chunk_0013",
+        "BLIP_CC__chunk_0001"
+      ],
+      "analysis": "Chunk DEM_Super_Resolution_Guided_by_High_Resolution_Remote_Sensin__chunk_0000 (type=body, tokens=89) not in top results — possible embedding mismatch or content too specific"
+    },
+    {
+      "query_id": "qa_59326a82",
+      "query": "GAP / global average pooling attention feature",
+      "mrr": 0.0,
+      "expected_chunks": [
+        "RMNet__chunk_0014"
+      ],
+      "actual_top5": [
+        "RMNet__chunk_0023",
+        "MV-CC__chunk_0017",
+        "DEM_Super_Resolution_Guided_by_High_Resolution_Remote_Sensin__chunk_0021",
+        "BLIP_CC__chunk_0019",
+        "Pix4Cap__chunk_0013"
+      ],
+      "analysis": "Chunk RMNet__chunk_0014 (type=body, tokens=695) not in top results — possible embedding mismatch or content too specific"
+    }
+  ],
+  "query_count": 115,
+  "k_values": [
+    5,
+    10,
+    20
+  ]
+}

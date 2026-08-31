@@ -1,0 +1,73 @@
+# ================================================================
+# indexer — Knowledge Indexing & Storage Orchestration
+# ================================================================
+# 完全解耦的索引构建配置。上游 pdf_pipeline 仅提供 rag_chunks.json。
+
+schema_version: "1.0"
+
+# ---- Embedding -----------------------------------------------------
+embedding:
+  backend: "local"               # api (云端) | local (本地 sentence-transformers)
+
+  # 云端 API 配置 (backend=api 时生效)
+  api:
+    api_base: "https://llm-xjt5kj6lz9uh275u.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+    api_key_env: "DASHSCOPE_API_KEY"
+    model: "text-embedding-v4"
+    batch_size: 32
+    max_retries: 3
+    timeout: 30
+
+  # 本地模型配置 (backend=local 时生效)
+  # 支持 BGE / Qwen3-Embedding / GTE / E5 等所有 sentence-transformers 模型
+  local:
+    # model_name: "BGE/bge-small-en-v1.5"
+    # model_name: "Qwen3_model/Qwen3-Embedding-0.6B"   # 备选
+    # model_name: "thenlper/gte-large-zh"        # 备选
+    model_name: "jina/jina-embeddings-v5-text-nano"        # 备选
+    device: "cpu"              # cpu | cuda | cuda:0
+    batch_size: 16
+    normalize: true            # L2 normalize (Cosine 相似度推荐开)
+
+# ---- Context Assembly (Small-to-Big) -------------------------------
+context_assembly:
+  retrieval_max_tokens: 8192   # 待向量化文本的 token 上限
+  generation_max_tokens: 8192 # 送 LLM 生成的完整上下文上限
+  neighbor_window: 1          # prev/next 各取几个邻居 chunk
+  include_keywords: true      # retrieval_text 保留 [KEYWORDS: ...] 前缀
+
+# ---- Vector Store --------------------------------------------------
+vector_store:
+  backend: "qdrant"           # chroma (本地) | qdrant (生产)
+  chroma:
+    persist_dir: "./indexer/data/chroma"
+    collection_name: "rag_chunks"
+  qdrant:
+    url: "http://localhost:6333"
+    collection_name: "rag_chunks"
+    vector_size: 768
+
+# ---- Dedup & Version -----------------------------------------------
+dedup:
+  hash_algorithm: "sha256"
+
+# ---- PII Detection -------------------------------------------------
+pii:
+  enabled: false
+  detection_method: "regex"   # regex | presidio
+  action: "flag"              # flag (标记) | drop (丢弃) | redact (脱敏)
+
+# ---- HyDE (Hypothetical Document Embedding, 可选) -----------------
+hyde:
+  enabled: false              # 启用需 LLM 调用，成本较高
+  model: "qwen3.6-max-preview"
+  questions_per_chunk: 3
+
+# ---- Eval Manifest -------------------------------------------------
+eval:
+  export_path: "./indexer/data/eval_manifest.jsonl"
+
+# ---- Logging -------------------------------------------------------
+logging:
+  level: "INFO"               # DEBUG | INFO | WARN | ERROR
+  format: "json"              # json | text

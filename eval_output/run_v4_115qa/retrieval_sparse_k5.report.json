@@ -1,0 +1,279 @@
+{
+  "overall_metrics": {
+    "recall@5": 0.8087,
+    "precision@5": 0.1861,
+    "ndcg@5": 0.7115,
+    "hit@5": 0.8087,
+    "recall@10": 0.8087,
+    "precision@10": 0.093,
+    "ndcg@10": 0.7115,
+    "hit@10": 0.8087,
+    "recall@20": 0.8087,
+    "precision@20": 0.0465,
+    "ndcg@20": 0.7115,
+    "hit@20": 0.8087,
+    "mrr": 0.6829
+  },
+  "confidence_intervals": {
+    "recall@5": {
+      "mean": 0.8087,
+      "ci95_low": 0.7391,
+      "ci95_high": 0.887
+    },
+    "precision@5": {
+      "mean": 0.1861,
+      "ci95_low": 0.167,
+      "ci95_high": 0.207
+    },
+    "ndcg@5": {
+      "mean": 0.7115,
+      "ci95_low": 0.642,
+      "ci95_high": 0.7778
+    },
+    "recall@10": {
+      "mean": 0.8087,
+      "ci95_low": 0.7304,
+      "ci95_high": 0.887
+    },
+    "precision@10": {
+      "mean": 0.093,
+      "ci95_low": 0.0835,
+      "ci95_high": 0.1035
+    },
+    "ndcg@10": {
+      "mean": 0.7115,
+      "ci95_low": 0.6421,
+      "ci95_high": 0.7785
+    },
+    "recall@20": {
+      "mean": 0.8087,
+      "ci95_low": 0.7304,
+      "ci95_high": 0.8783
+    },
+    "precision@20": {
+      "mean": 0.0465,
+      "ci95_low": 0.0413,
+      "ci95_high": 0.0517
+    },
+    "ndcg@20": {
+      "mean": 0.7115,
+      "ci95_low": 0.6391,
+      "ci95_high": 0.7802
+    },
+    "mrr": {
+      "mean": 0.6829,
+      "ci95_low": 0.6072,
+      "ci95_high": 0.7583
+    }
+  },
+  "dimension_breakdown": [
+    {
+      "dimension": "difficulty_level",
+      "value": "easy",
+      "count": 20,
+      "recall@5": 0.9,
+      "precision@5": 0.18,
+      "ndcg@5": 0.8131,
+      "mrr": 0.7833,
+      "recall@10": 0.9,
+      "precision@10": 0.09,
+      "ndcg@10": 0.8131,
+      "recall@20": 0.9,
+      "precision@20": 0.045,
+      "ndcg@20": 0.8131
+    },
+    {
+      "dimension": "difficulty_level",
+      "value": "hard",
+      "count": 38,
+      "recall@5": 0.6316,
+      "precision@5": 0.2,
+      "ndcg@5": 0.5549,
+      "mrr": 0.5417,
+      "recall@10": 0.6316,
+      "precision@10": 0.1,
+      "ndcg@10": 0.5549,
+      "recall@20": 0.6316,
+      "precision@20": 0.05,
+      "ndcg@20": 0.5549
+    },
+    {
+      "dimension": "difficulty_level",
+      "value": "medium",
+      "count": 57,
+      "recall@5": 0.8947,
+      "precision@5": 0.1789,
+      "ndcg@5": 0.7802,
+      "mrr": 0.7418,
+      "recall@10": 0.8947,
+      "precision@10": 0.0895,
+      "ndcg@10": 0.7802,
+      "recall@20": 0.8947,
+      "precision@20": 0.0447,
+      "ndcg@20": 0.7802
+    },
+    {
+      "dimension": "content_type",
+      "value": "body",
+      "count": 100,
+      "recall@5": 0.79,
+      "precision@5": 0.158,
+      "ndcg@5": 0.693,
+      "mrr": 0.6603,
+      "recall@10": 0.79,
+      "precision@10": 0.079,
+      "ndcg@10": 0.693,
+      "recall@20": 0.79,
+      "precision@20": 0.0395,
+      "ndcg@20": 0.693
+    },
+    {
+      "dimension": "content_type",
+      "value": "unknown",
+      "count": 15,
+      "recall@5": 0.9333,
+      "precision@5": 0.3733,
+      "ndcg@5": 0.835,
+      "mrr": 0.8333,
+      "recall@10": 0.9333,
+      "precision@10": 0.1867,
+      "ndcg@10": 0.835,
+      "recall@20": 0.9333,
+      "precision@20": 0.0933,
+      "ndcg@20": 0.835
+    },
+    {
+      "dimension": "generation_mode",
+      "value": "cross_chunk",
+      "count": 15,
+      "recall@5": 0.9333,
+      "precision@5": 0.3733,
+      "ndcg@5": 0.835,
+      "mrr": 0.8333,
+      "recall@10": 0.9333,
+      "precision@10": 0.1867,
+      "ndcg@10": 0.835,
+      "recall@20": 0.9333,
+      "precision@20": 0.0933,
+      "ndcg@20": 0.835
+    },
+    {
+      "dimension": "generation_mode",
+      "value": "keyword",
+      "count": 50,
+      "recall@5": 0.9,
+      "precision@5": 0.18,
+      "ndcg@5": 0.7957,
+      "mrr": 0.76,
+      "recall@10": 0.9,
+      "precision@10": 0.09,
+      "ndcg@10": 0.7957,
+      "recall@20": 0.9,
+      "precision@20": 0.045,
+      "ndcg@20": 0.7957
+    },
+    {
+      "dimension": "generation_mode",
+      "value": "semantic",
+      "count": 50,
+      "recall@5": 0.68,
+      "precision@5": 0.136,
+      "ndcg@5": 0.5902,
+      "mrr": 0.5607,
+      "recall@10": 0.68,
+      "precision@10": 0.068,
+      "ndcg@10": 0.5902,
+      "recall@20": 0.68,
+      "precision@20": 0.034,
+      "ndcg@20": 0.5902
+    }
+  ],
+  "failure_analysis": [
+    {
+      "query_id": "qa_56f8febb",
+      "query": "features feature performance",
+      "mrr": 0.0,
+      "expected_chunks": [
+        "RMNet__chunk_0031"
+      ],
+      "actual_top5": [
+        "RMNet__chunk_0018",
+        "RMNet__chunk_0015",
+        "DEM_Super_Resolution_Guided_by_High_Resolution_Remote_Sensin__chunk_0014",
+        "RMNet__chunk_0011",
+        "RMNet__chunk_0013"
+      ],
+      "analysis": "Chunk RMNet__chunk_0031 (type=body, tokens=891) not in top results — possible embedding mismatch or content too specific"
+    },
+    {
+      "query_id": "qa_433b22b3",
+      "query": "transformer model performance",
+      "mrr": 0.0,
+      "expected_chunks": [
+        "RMNet__chunk_0023"
+      ],
+      "actual_top5": [
+        "RMNet__chunk_0009",
+        "RMNet__chunk_0008",
+        "RMNet__chunk_0025",
+        "MV-CC__chunk_0021",
+        "MV-CC__chunk_0003"
+      ],
+      "analysis": "Chunk RMNet__chunk_0023 (type=body, tokens=1690) not in top results — possible embedding mismatch or content too specific"
+    },
+    {
+      "query_id": "qa_1bfd1738",
+      "query": "rsiccformer blip-cc sim",
+      "mrr": 0.0,
+      "expected_chunks": [
+        "BLIP_CC__chunk_0012"
+      ],
+      "actual_top5": [
+        "RMNet__chunk_0027",
+        "BLIP_CC__chunk_0000",
+        "RMNet__chunk_0026",
+        "BLIP_CC__chunk_0016",
+        "Pix4Cap__chunk_0012"
+      ],
+      "analysis": "Chunk BLIP_CC__chunk_0012 (type=body, tokens=2394) not in top results — possible embedding mismatch or content too specific"
+    },
+    {
+      "query_id": "qa_9c7caece",
+      "query": "stir birle stirme",
+      "mrr": 0.0,
+      "expected_chunks": [
+        "BLIP_CC__chunk_0010"
+      ],
+      "actual_top5": [
+        "BLIP_CC__chunk_0002",
+        "BLIP_CC__chunk_0016",
+        "BLIP_CC__chunk_0005",
+        "BLIP_CC__chunk_0004",
+        "BLIP_CC__chunk_0006"
+      ],
+      "analysis": "Chunk BLIP_CC__chunk_0010 (type=body, tokens=1209) not in top results — possible embedding mismatch or content too specific"
+    },
+    {
+      "query_id": "qa_872f2f0e",
+      "query": "dataset mv-cc levir-mci",
+      "mrr": 0.0,
+      "expected_chunks": [
+        "MV-CC__chunk_0017"
+      ],
+      "actual_top5": [
+        "MV-CC__chunk_0024",
+        "Pix4Cap__chunk_0011",
+        "RMNet__chunk_0027",
+        "MV-CC__chunk_0020",
+        "DEM_Super_Resolution_Guided_by_High_Resolution_Remote_Sensin__chunk_0020"
+      ],
+      "analysis": "Chunk MV-CC__chunk_0017 (type=body, tokens=1328) not in top results — possible embedding mismatch or content too specific"
+    }
+  ],
+  "query_count": 115,
+  "k_values": [
+    5,
+    10,
+    20
+  ]
+}

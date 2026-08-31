@@ -1,0 +1,13 @@
+# Streamlit 配置 — Windows 环境
+# 必须设为 "none" 以完全禁用文件监视器。
+# "poll" 仍然会触发 initial module scan → WinError 6714
+[server]
+fileWatcherType = "none"
+headless = true
+
+# 开发提示：修改代码后需手动刷新浏览器 (Ctrl+R / F5) 才能看到效果
+# headless=true: 禁用自动打开浏览器，手动访问 http://localhost:8501
+#                （Windows 上绕过 webbrowser.open() 导致进程退出的 bug）
+
+# 崩溃日志捕获已在 web/app.py 中配置（sys.excepthook + logging.FileHandler）。
+# Streamlit 内部异常会写入 %TMP%/literature_assistant_crash.log

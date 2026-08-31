@@ -1,0 +1,6 @@
+{"seq": 1, "timestamp": "2026-06-26 14:08:54.773", "phase": "init", "event": "query_start", "data": {"question": "能告诉我MV-CC的摘要原文吗？", "question_hash": "560488a6"}}
+{"seq": 2, "timestamp": "2026-06-26 14:08:57.160", "phase": "planning", "event": "intent_detected", "data": {"intent_type": "knowledge_retrieval", "confidence": 0.98, "retrieval_scope": "local"}}
+{"seq": 3, "timestamp": "2026-06-26 14:08:58.971", "phase": "planning", "event": "query_rewritten", "data": {"original": "能告诉我MV-CC的摘要原文吗？", "rewritten": "能告诉我MV-CC.pdf这篇论文的摘要原文吗？"}}
+{"seq": 4, "timestamp": "2026-06-26 14:08:58.972", "phase": "executing", "event": "agent_start", "data": {"intent_type": "knowledge_retrieval", "scope": "local", "tools_count": 8, "tool_names": ["search_literature", "get_paper_detail", "compare_papers", "search_long_term_memory", "get_conversation_context", "rewrite_query", "add_to_memory", "get_system_status"]}}
+{"seq": 5, "timestamp": "2026-06-26 14:09:41.636", "phase": "executing", "event": "tool_invoked", "data": {"tool": "get_paper_detail", "args": {"paper_title": "MV-CC"}}}
+{"seq": 6, "timestamp": "2026-06-26 14:09:41.636", "phase": "responding", "event": "loop_result", "data": {"status": "answer", "answer_length": 1351}}

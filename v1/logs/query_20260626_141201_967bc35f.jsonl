@@ -1,0 +1,4 @@
+{"seq": 1, "timestamp": "2026-06-26 14:12:01.924", "phase": "init", "event": "query_start", "data": {"question": "你能在arxiv上搜索一下吗？", "question_hash": "967bc35f"}}
+{"seq": 2, "timestamp": "2026-06-26 14:12:01.936", "phase": "planning", "event": "intent_detected", "data": {"intent_type": "knowledge_retrieval", "confidence": 0.8, "retrieval_scope": "ambiguous"}}
+{"seq": 3, "timestamp": "2026-06-26 14:12:01.939", "phase": "waiting", "event": "clarification_sent", "data": {"status": "clarify_scope", "clarification_hint": "你想从哪里检索？\n- 📂 **本地知识库**：检索已上传的 PDF 论文\n- 🌐 **在线搜索**：从 arXiv 等平台搜索最新文献\n- 🔀 **两者都搜**：先查本地，本地不够再在线搜索"}}
+{"seq": 4, "timestamp": "2026-06-26 14:12:01.939", "phase": "waiting", "event": "loop_result", "data": {"status": "clarify_scope"}}

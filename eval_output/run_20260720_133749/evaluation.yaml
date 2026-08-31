@@ -1,0 +1,97 @@
+# ================================================================
+# retrieval_orchestrator — Evaluation Configuration
+# ================================================================
+# 离线检索验证框架配置。定义评估数据集生成参数、检索策略网格、业务阈值。
+#
+# 用法:
+#   python -m retrieval_orchestrator evaluate --config retrieval_orchestrator/evaluation.yaml
+
+evaluation:
+  # ---- 数据源 ---------------------------------------------------------
+  rag_path: "./eval_output/all_rag_chunks.json"
+
+  # ---- 索引器配置路径 (用于连接向量库) -------------------------------
+  indexer_config: "./indexer/config.yaml"
+
+  # ---- 输出目录 -------------------------------------------------------
+  output_dir: "./eval_output"
+
+  # ---- K 值列表 (用于 Recall@K / NDCG@K 计算) -----------------------
+  k_values: [5, 10, 20]
+
+  # ---- 评估数据集清单 (复用，不每次重新生成) ---------------
+  manifest: "./eval_output/datasets/manifest_v1_115qa.jsonl"
+
+  # ---- 评估数据集生成 (仅在需要重建时使用) -------------------
+  dataset:
+    # 生成模式: keyword | semantic | cross_chunk
+    modes:
+      - keyword
+      - semantic
+      - cross_chunk     # 需要 LLM
+
+    # 每种模式最大采样数 (null = 所有符合条件的 chunk)
+    samples_per_mode: 50
+
+    # LLM 配置 (semantic / cross_chunk 模式需要)
+    llm_model: "kimi-k2.6"
+    llm_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    llm_api_key_env: "DASHSCOPE_API_KEY"
+
+  # ---- 业务阈值 -------------------------------------------------------
+  thresholds:
+    recall@10: 0.80
+    mrr: 0.65
+
+  # ---- 质量门禁 -------------------------------------------------------
+  quality_gate:
+    min_recall_at_5: 0.6       # 低于此值 → 阻断性错误
+
+  # ---- 历史最优报告 (回归检测, 可选) --------------------------------
+  # historical_best: "./eval_output/best_report.json"
+
+  # ---- LLM-as-Judge (可选, 需 LLM) -----------------------------------
+  llm_judge:
+    enabled: false
+    model: "kimi-k2.6"
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key_env: "DASHSCOPE_API_KEY"
+    sample_size: 10           # 采样评估的 query 数
+
+# ---- 检索策略网格 ------------------------------------------------------
+retrieval:
+  # 检索方法
+  methods:
+    - dense
+    - sparse
+    - hybrid
+
+  # Top-K 值
+  top_k_values: [5, 10, 20]
+
+  # Query 改写 (仅 dense/hybrid 生效)
+  query_rewriting:
+    - none
+    # - hyde                  # 需要 LLM
+
+  # 混合检索模式 (仅 method=hybrid 生效)
+  hybrid_modes:
+    - rrf
+    # - weighted
+
+  # 混合权重 (仅 hybrid_mode=weighted 生效)
+  dense_weights:
+    - 0.7
+
+  # 元数据过滤 (null = 不过滤)
+  metadata_filters:
+    - null
+    - {"content_type": "body"}
+
+  # HyDE 模型 (仅 query_rewriting=hyde 生效)
+  hyde_model: "kimi-k2.6"
+
+  # LLM 配置 (HyDE / 改写)
+  llm:
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key_env: "DASHSCOPE_API_KEY"
