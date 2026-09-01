@@ -50,12 +50,15 @@ def decide_mode(state: dict) -> str:
     """Pick execution mode. "react" keeps the existing single-ReAct path.
 
     "plan" only on grounded signals:
+      - domain is creation/coding (领域 agent 的写作/实验工作流必须走 plan 通道)
       - explicit comparison / multi-sub-question phrasing
       - ≥2 distinct papers CONFIRMED by the resolution layer (focus_papers and
         entity terms that actually matched a library paper — see resolve_node).
     No blacklist heuristics: an entity only counts when resolution matched it
     to a known paper, so 单论文单动作指令（入库/下载）never misroutes here.
     """
+    if state.get("domain") in ("creation", "coding"):
+        return "plan"
     q = _last_user_text(state)
     if q:
         ql = q.lower()
@@ -78,10 +81,11 @@ def decide_mode(state: dict) -> str:
 class PlanStep(BaseModel):
     id: str
     description: str = Field(description="What this step answers (task-oriented)")
-    target: Literal["tool", "arxiv", "ingest"] = Field(
+    target: Literal["tool", "arxiv", "ingest", "creator", "coder"] = Field(
         description='"tool" (a direct parent tool: search_papers / fetch_content / '
         'list_dir / read_file / write_file / check_paper / check_task_status) | '
-        'arxiv (EXTERNAL arXiv only) | ingest (download/入库 write commands)'
+        'arxiv (EXTERNAL arXiv only) | ingest (download/入库 write commands) | '
+        'creator (创作域写作 subagent) | coder (编码域实验/委托 subagent，v10 Phase C)'
     )
     args: dict = Field(default_factory=dict)
     depends_on: list[str] = Field(default_factory=list)
@@ -93,7 +97,8 @@ class PlanResult(BaseModel):
 
 # ---- plan_node ----
 
-async def _ask_for_plan(model, prompt: str, attempts: int = 2) -> list[dict]:
+async def _ask_for_plan(model, prompt: str, attempts: int = 2,
+                        system: str | None = None) -> list[dict]:
     """Structured plan extraction with graceful degradation. Returns [] instead
     of raising/crashing when the model produces no plan.
 
@@ -106,8 +111,11 @@ async def _ask_for_plan(model, prompt: str, attempts: int = 2) -> list[dict]:
     call — observed consistently with qwen-plus — so a valid plan was silently
     discarded and the turn degenerated into the fallback. Parsing the model's
     actual output is the root fix, not another retry.
+
+    `system` overrides the system prompt (creation domain uses
+    CREATION_PLAN_SYSTEM); default PLAN_SYSTEM keeps paper behavior unchanged.
     """
-    msgs = [SystemMessage(content=PLAN_SYSTEM), HumanMessage(content=prompt)]
+    msgs = [SystemMessage(content=system or PLAN_SYSTEM), HumanMessage(content=prompt)]
     for attempt in range(attempts):
         count("llm_calls")
         try:
@@ -188,10 +196,13 @@ def _fallback_plan(state: dict) -> list[dict]:
 
 @timed("plan")
 async def plan_node(state: AgentState, config) -> dict:
-    """LLM → structured ordered steps. Zero-state: full context injected.
+    """LLM → structured ordered steps (or creation outline). Never raises:
+    `_ask_for_plan` degrades to a deterministic fallback if the LLM yields none.
 
-    Never raises: `_ask_for_plan` degrades to `_fallback_plan` (deterministic
-    library steps) if the LLM produces no steps.
+    Domain-aware:
+      - paper (default) → PLAN_SYSTEM (zero regression)
+      - creation → CREATION_PLAN_SYSTEM (章节大纲) + 建 doc/注入 doc_id
+      - coding  → 默认 PLAN_SYSTEM（Phase C 配 CODING 专用 target 后细分）
     """
     from .nodes import _get_model  # lazy: avoid import cycle
 
@@ -209,6 +220,11 @@ async def plan_node(state: AgentState, config) -> dict:
         f"- {p.get('query', '')} → {p.get('match', '')} ({p.get('level', 'NONE')})"
         for p in papers
     ) or "(no resolved hints)"
+
+    if state.get("domain") == "creation":
+        return await _creation_plan(model, state, query, entities, hints)
+    if state.get("domain") == "coding":
+        return await _coding_plan(model, query, entities, hints)
 
     prompt = (
         f"## User Question\n{query}\n\n"
@@ -236,6 +252,96 @@ async def plan_node(state: AgentState, config) -> dict:
     }
 
 
+async def _coding_plan(model, query: str, entities: str, hints: str) -> dict:
+    """Coding-domain planning: 实验/代码请求 → coder/study 步骤表。
+
+    MVP 不做确定性 fallback 步骤（无已知实验参数时空 plan → executor no-op →
+    synthesize 兜底回答）；不建 state 额外字段。
+    """
+    from .prompts import CODING_PLAN_SYSTEM
+
+    prompt = (
+        f"## User Question\n{query}\n\n"
+        f"## Key Entities\n{entities}\n\n"
+        f"## Resolved Paper References\n{hints}"
+    )
+    plan: list[dict] = await _ask_for_plan(model, prompt, system=CODING_PLAN_SYSTEM)
+    if not plan:
+        log_event("coding_plan_fallback", node="plan", level="warning")
+
+    emit({
+        "type": "plan",
+        "steps": [
+            {k: s.get(k) for k in ("id", "description", "target", "depends_on")}
+            for s in plan
+        ],
+    })
+    return {"mode": "plan", "plan": plan, "plan_progress": 0}
+
+
+async def _creation_plan(model, state: AgentState, query: str,
+                        entities: str, hints: str) -> dict:
+    """Creation-domain planning: 章节大纲 → 建 doc（确定性代码）→ 步骤注入 doc_id。
+
+    `_ensure_writing_doc` 在 agent/domains/creation.py（业务模块）里建文档并写
+    大纲（outline 来自本步骤产出的步骤表），doc_id 注入每个 creator 步骤的 args，
+    使 executor 逐章调用 creator subagent 时能定位文档。任何失败都不 raise：
+    空 plan → 不建 doc，executor no-op，synthesize 兜底回答。
+    """
+    from .prompts import CREATION_PLAN_SYSTEM
+
+    prompt = (
+        f"## User Writing Request\n{query}\n\n"
+        f"## Key Entities\n{entities}\n\n"
+        f"## Resolved Paper References\n{hints}"
+    )
+    plan: list[dict] = await _ask_for_plan(model, prompt, system=CREATION_PLAN_SYSTEM)
+    if not plan:
+        log_event("creation_plan_fallback", node="plan", level="warning")
+        return {"mode": "plan", "plan": [], "plan_progress": 0, "doc_id": None}
+
+    # 章节强制串行(覆盖 LLM 的空 depends_on): 并行 creator 同写一份 doc.json 是
+    # read-modify-write 竞争,会丢章节状态;串行让后章 doc_get_state 能引用前章
+    # 已写内容,交叉一致性才有意义。
+    prev: str | None = None
+    for _step in plan:
+        if prev:
+            _step["depends_on"] = [prev]
+        prev = _step.get("id")
+
+    outline = [
+        (s.get("args") or {}).get("section_id", s.get("id", ""))
+        for s in plan
+    ]
+    try:
+        from .domains.creation import _ensure_writing_doc
+        doc_id = await _ensure_writing_doc(query, outline, plan)
+    except Exception as exc:
+        log_event("creation_doc_failed", node="plan", level="warning",
+                  error=f"{type(exc).__name__}: {exc}")
+        return {"mode": "plan", "plan": [], "plan_progress": 0, "doc_id": None}
+
+    for step in plan:
+        args = dict(step.get("args") or {})
+        args["doc_id"] = doc_id
+        step["args"] = args
+
+    emit({
+        "type": "plan",
+        "steps": [
+            {k: s.get(k) for k in ("id", "description", "target", "depends_on")}
+            for s in plan
+        ],
+    })
+
+    return {
+        "mode": "plan",
+        "plan": plan,
+        "plan_progress": 0,
+        "doc_id": doc_id,
+    }
+
+
 # ---- executor ----
 
 def _subagent_task(description: str, args: dict) -> str:
@@ -258,6 +364,30 @@ def _subagent_task(description: str, args: dict) -> str:
         lines.append(f"{k}: {v}" if not isinstance(v, (dict, list)) else f"{k}: {json.dumps(v, ensure_ascii=False)}")
     block = "\n".join(lines)
     return f"{task}\n{block}" if task else block
+
+
+async def _verify_creator_step(step: dict, out: str) -> tuple[bool, str, str]:
+    """Creator 步骤的权威校验: 该 section 必须已在 doc 落盘(status=done)。
+
+    subagent 无论返回多完整的正文,只要没经过 doc_write_section 写进 doc 就
+    等于未产出——返回 ok=False 且不转发正文,progress 由 synthesize 按 doc 状态
+    生成(避免「聊天出全文、doc 没章节」的脱节)。
+    """
+    from .domains.creation import verify_section_written
+
+    args = dict(step.get("args") or {})
+    doc_id = str(args.get("doc_id") or "")
+    section_id = str(args.get("section_id") or "")
+    if not doc_id or not section_id:
+        return False, "", f"creator 步骤缺少 doc_id/section_id: {args}"
+    written, wc = await verify_section_written(doc_id, section_id)
+    if written:
+        return (True, f"{section_id} | {wc} words | wrote via doc_write_section (verified)", "")
+    return (
+        False, "",
+        f"creator 未调用 doc_write_section，章节「{section_id}」未落盘。"
+        f"subagent 仅返回文本: {str(out)[:160]}",
+    )
 
 
 async def _run_step(step: dict, state: dict, config) -> dict:
@@ -306,17 +436,35 @@ async def _run_step(step: dict, state: dict, config) -> dict:
 
         if is_subagent:
             # subagent 的 as_tool._call 自己 emit 边界 + 叶子工具事件；
-            # 这里只 await 拿结果，避免重复卡片。
-            out = await tool.ainvoke(call_args)
+            # 这里只 await 拿结果，避免重复卡片。config 透传: subgraph 作为子
+            # run 挂到父 trace(LangSmith 才能看到 creation 内部调用)。
+            out = await tool.ainvoke(call_args, config=config)
+            if target == "creator":
+                ok, output, err = await _verify_creator_step(step, out)
+                return {
+                    "step_id": step_id, "ok": ok, "output": output, "error": err,
+                }
             return {
                 "step_id": step_id, "ok": True, "output": str(out),
             }
 
         emit({"type": "tool_start", "id": step_id, "name": name, "args": call_args})
-        out = await tool.ainvoke(call_args)
-        _end(name, "success", str(out))
+        out_raw = await tool.ainvoke(call_args, config=config)
+        out_str = str(out_raw)
+        # (P4) 工具错误以错误信封形式正常返回（非异常）——统一解析后把
+        # 「调用成功但语义失败」归一为 ok=False，好让 executor 走恢复/标注，
+        # 而不是把 {"ok": false, ...} 当成功结果交给 synthesize。
+        from .tool_contract import parse_tool_result
+        parsed = parse_tool_result(out_str)
+        if parsed.is_envelope and not parsed.ok:
+            _end(name, "error", out_str)
+            return {
+                "step_id": step_id, "ok": False, "output": out_str,
+                "error": parsed.error,
+            }
+        _end(name, "success", out_str)
         return {
-            "step_id": step_id, "ok": True, "output": str(out),
+            "step_id": step_id, "ok": True, "output": out_str,
         }
     except Exception as exc:
         # subagent 失败时 _call 已用 run_id emit tool_end(error)，这里不再重复。
@@ -342,6 +490,9 @@ async def executor_node(state: AgentState, config) -> dict:
         r["step_id"]: r for r in state.get("subagent_results", [])
     }
     done: set[str] = set(results)
+    # creator 失败重试一次: subagent 以纯文本作答(未调 doc_write_section)是高频
+    # 模式,一次显式 "必须落盘" 提示通常足以修正,避免整章静默丢失。
+    retried: set[str] = set()
     remaining = [s for s in plan if s.get("id") not in done]
 
     while remaining:
@@ -378,7 +529,51 @@ async def executor_node(state: AgentState, config) -> dict:
             else:
                 run.append(s)
         outs = await asyncio.gather(*[_run_step(s, state, config) for s in run])
-        for s, out in zip(run, outs):
+        for i, s in enumerate(run):
+            out = outs[i]
+            # (P4) 直接工具步骤失败 → 确定性重试一次: transient 原参数; param_error
+            # 且错误带 available_papers/sections → 修正参数。对比 react 模式的
+            # LLM 错误恢复，这里不用 LLM,只做确定性的参数修正/重试(见
+            # _retry_args_from_error)。
+            if (
+                out.get("ok") is False
+                and s.get("target") == "tool"
+                and s.get("id") not in retried
+            ):
+                retried.add(s.get("id"))
+                retry_args = _retry_args_from_error(s, out)
+                if retry_args is not None:
+                    retry = dict(s)
+                    retry["args"] = retry_args
+                    log_event("tool_step_retry", node="executor", level="warning",
+                              step_id=s.get("id"))
+                    retried_out = await _run_step(retry, state, config)
+                    if retried_out.get("ok"):
+                        out = retried_out
+                    else:
+                        retried_out["error"] = (
+                            f"[重试一次仍失败] {retried_out.get('error', '')}"
+                        )
+                        out = retried_out
+            # creator 落盘失败 → 重试一次(任务附明确落盘指令)
+            if (
+                out.get("ok") is False
+                and s.get("target") == "creator"
+                and s.get("id") not in retried
+            ):
+                retried.add(s.get("id"))
+                retry = dict(s)
+                retry_args = dict(s.get("args") or {})
+                retry_args["_retry_hint"] = (
+                    "上一轮没有调用 doc_write_section。现在必须调用 "
+                    "doc_write_section(doc_id, section_id, content) 把整段内容写入 doc,"
+                    "然后输出 ONLY 状态行: `<section_id> | <N> words | wrote via "
+                    "doc_write_section`。不得以纯文本输出正文。"
+                )
+                retry["args"] = retry_args
+                log_event("creator_step_retry", node="executor", level="warning",
+                          step_id=s.get("id"))
+                out = await _run_step(retry, state, config)
             results[s["id"]] = out
             done.add(s["id"])
         remaining = [s for s in remaining if s.get("id") not in done]
@@ -395,6 +590,55 @@ def _is_check_step(step: dict, by_id: dict) -> bool:
         step.get("target") == "tool"
         and (step.get("args") or {}).get("tool") == "check_paper"
     )
+
+
+def _retry_args_from_error(step: dict, out: dict) -> dict | None:
+    """(P4) 按 react 错误分类做确定性重试决策。返回修正后的 args 或 None(不重试)。
+
+    - transient            → 原参数重试一次
+    - param_error + 候选   → 用错误信封的 available_papers / available_sections
+                             修正参数重试一次（同一步骤内，不级联后续依赖步骤）
+    - not_found / backend_down / permission_denied / 未知 → 不重试，标注原因
+      （synthesize 已有失败渲染）
+    """
+    from .nodes import _classify_tool_error
+
+    payload = out.get("output") or out.get("error") or ""
+    info = _classify_tool_error(payload)
+    if not info:
+        return None
+    if info["type"] == "transient":
+        return dict(step.get("args") or {})
+
+    if info["type"] == "param_error":
+        args = dict(step.get("args") or {})
+        changed = False
+        papers = info.get("available_papers") or []
+        if papers and args.get("paper_name"):
+            req = canonicalize(str(args["paper_name"]))
+            exact = next((p for p in papers if canonicalize(str(p)) == req), None)
+            if exact:
+                args["paper_name"] = exact
+                changed = True
+            elif len(papers) == 1:
+                args["paper_name"] = papers[0]
+                changed = True
+        sections = info.get("available_sections") or []
+        if sections and args.get("section"):
+            reql = str(args["section"]).lower()
+            hit = next(
+                (s for s in sections if reql in s.lower() or s.lower() in reql), None
+            )
+            if hit:
+                args["section"] = hit
+                changed = True
+            elif sections:
+                args["section"] = sections[0]
+                changed = True
+        return args if changed else None
+
+    # not_found / backend_down / permission_denied / unknown → 不重试
+    return None
 
 
 def _ingest_guard(step: dict, results: dict, by_id: dict) -> str | None:
@@ -419,15 +663,16 @@ def _ingest_guard(step: dict, results: dict, by_id: dict) -> str | None:
     if not pk:
         return None
 
+    from .tool_contract import parse_tool_result
+
     for sid, r in results.items():
         st = by_id.get(sid)
         if not st or not _is_check_step(st, by_id):
             continue
-        try:
-            payload = json.loads((r.get("output") or ""))
-        except (ValueError, TypeError):
+        parsed = parse_tool_result(r.get("output") or "")
+        if not parsed.is_envelope or not parsed.ok:
             continue
-        inner = (payload or {}).get("data") if isinstance(payload, dict) else {}
+        inner = parsed.data or {}
         if not isinstance(inner, dict):
             continue
         term = str(inner.get("term", ""))

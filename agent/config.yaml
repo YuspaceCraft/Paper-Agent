@@ -1,0 +1,30 @@
+# ================================================================
+# agent — LangGraph Agent 框架执行约束
+# ================================================================
+# 统一配置 step / turn 上限。这些值过去散落在代码与 env 里:
+#   父 agent 步数上限  → env AGENT_MAX_STEPS(state.py 硬编码默认 30)
+#   subagent 步数上限  → SubagentSpec.max_steps 硬编码(SUBAGENTS 表)
+#   turn 上限          → env AGENT_MAX_TURNS(state.py 硬编码默认 50)
+#
+# 优先级: 显式 env(AGENT_MAX_STEPS / AGENT_MAX_TURNS) > 本文件 > 代码默认。
+# 修改本文件后: 后端进程需重启(load_limits 按进程缓存一次)。
+#
+# 语义:
+#   max_steps  = step 粒度,单个 turn 内最多执行的 agent↔tools 工具轮次。
+#   max_turns  = turn 粒度,会话累计用户回合上限,超过后不再调用工具、强制收尾。
+#   subagents.<name>.max_steps = 该 subagent 一轮任务内的工具轮次上限
+#     (creator 要「读多篇论文 + 写一章」,负担比 arxiv/ingest 重,故放宽)。
+
+max_steps: 40          # 父 agent 单 turn 工具轮次上限
+max_turns: 50          # 会话 turn 上限
+
+# ---- subagent 工具轮次上限 ----
+subagents:
+  arxiv:
+    max_steps: 30       # 检索/读摘要,单任务窄工具面
+  ingest:
+    max_steps: 30       # 下载/入库,单动作
+  creator:
+    max_steps: 30      # 章节写作: 先读多篇论文再落盘(5 轮会中途打满,见 TROUBLESHOOTING 写作链路)
+  coder:
+    max_steps: 30       # 单任务实验/编码

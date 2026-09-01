@@ -286,6 +286,46 @@ C:/Users/30811/miniconda3/envs/demo/python.exe -c "from indexer.pipeline import 
 
 ---
 
+## agent / 库工具反复超时拖垮整轮（后端不可达无快速失败）
+
+**现象**: agent 逐篇 `fetch_content` 验证论文时，某一篇之后整轮卡住直到返回「（回答超时，请重试或简化问题。）」。日志里多条 `tool_call ... error=timeout`，每条间隔约 10s；整轮时长逼近 300s 上限。
+
+**原因**: 库工具（`fetch_content`/`search_papers` 等）经 httpx 访问 `AGENT_API_BASE`；后端不可达（端口错配 / 服务未起 / 丢包）时，每次调用要等满默认 10s 超时，返回的却是 `transient`（"Server busy. Retry once."）——LLM 按反馈反复重试，甚至 fallback 到 `search_papers`（同一个死端口又等 10s），把整轮 `TURN_TIMEOUT`(300s) 烧光。缺的是快速失败：始终打本机端口，connect 2s 未通即视为不可达；且连续失败后应进入熔断窗口，不再空等网络。
+
+**解决**: 新增 `agent/library_api.py`（熔断 + 短 connect 超时），`builtin_provider` 所有库工具与 `resolution.fetch_papers` 接入：网络失败标记熔断（默认 45s，env `AGENT_API_BREAKER_TTL`），熔断期内库调用直接速断返回 `error_type="backend_down"`；`nodes._format_error_feedback` 识别 backend_down 后指示 agent 停止重试、向用户报告启动命令/端口检查。`download_paper`（外网 arXiv）不受影响。
+
+---
+
+## agent / 多工具任务被 token 预算提前截断（第 N 次 fetch_content 该来不来）
+
+**现象**: 逐篇 `fetch_content` 验证多篇论文（如 13 篇里筛 NLP）时，验证到 3~5 篇左右 agent 不再继续调用工具，直接给出不完整的、像被切掉的回答；顺带可能演变成整轮接近 TURN_TIMEOUT 表现为「第 N 次调用卡住直到超时」。(用户观察到的「上下文和系统回复超出截断字数」即此现象。)
+
+**原因**: `agent_node` 的 token 记账把每轮**全量历史重新统计并累加**进 `tokens_used`（`tokens_used += in_tokens + out_tokens`，in_tokens 每轮都重算整个 messages）——超线性膨胀。`token_budget` 默认 20000，实测 `AGENT_SYSTEM`≈2.5k、每次 fetch_content overview≈1.5~2k，3~4 轮后累计即撞线，[nodes.py] 的「Token budget exhausted → 强制 final answer（不带工具）」把正常的多工具流程在第 5 次等调用处掐断。
+
+**解决**: `tokens_used` 改为**当次调用的实际输入规模**（`in_tokens + out_tokens`，不累加），预算语义从「累计消耗」变成「当前喂给模型的上下文上限」；默认预算 20000 → 60000（env `AGENT_TOKEN_BUDGET` 可覆盖，qwen-plus 窗口 128k，留足输出空间）。正常多轮任务不再被提前截断，超限兜底保留。
+
+---
+
+## agent / 执行粒度错位：step 上限 5 掐断复杂工具编排（第 N 次 fetch_content 被丢弃）
+
+**现象**: 逐篇 `fetch_content` 验证多篇论文（如 13 篇里筛 NLP）时，第 5 次工具调用发出后「直接回复中断」——第 5 张工具卡片只有 `tool_start` 没有 `tool_end`，无最终文本。trace 停在 agent 第 5 次调用：iteration=5、消息末尾是待执行的 tool call，无工具结果。
+
+**原因**: 当初把 `max_iterations` 当**单 turn 内 step 上限=5** 用，粒度错位：
+1. `after_agent` 在 `iteration >= max_iterations(5)` 时把**已发出未执行**的 tool call 直接丢弃路由到 synthesize —— 第 5 个请求从未真正执行，SSE 只见 start 不见 end，前端卡片悬挂。
+2. 复杂工具编排（逐篇验证 5~30 篇）是合法需求，5 步上限远不够；而此时嵌套的超时更糟——5 次 LLM 调用每次都把全量历史（含逐字保存在 messages 里的工具正文，一次 fetch_content ≈9KB）重发一遍，最后 synthesize 再全量喂一次，累计冲破 `AGENT_TURN_TIMEOUT=300s`，前端看到「回答超时」。
+3. 会话级 turn 上限完全缺失（`iteration` 每回合 reset），只有 step 限制没有 turn 限制。
+
+**解决**（v11，执行粒度拆分 turn/step）:
+- **state.py**：`max_iterations` → `max_steps`（单 turn 内最多执行的**工具往返数**，默认 30，env `AGENT_MAX_STEPS`，兼容旧名 `AGENT_MAX_ITERATIONS`）；新增 `turn_count` / `max_turns`（会话级轮次上限，默认 50，env `AGENT_MAX_TURNS`）。turn_count 由 understand_node 每回合 +1。
+- **after_agent**：语义改为「已执行轮数 = iteration - 1」；`已执行轮数 >= max_steps` 才转 synthesize，**撞上限那一步也放行执行完**，不再中途丢弃已发请求（前端不再有悬挂卡片）。
+- **agent_node**：新增 turn 守卫（`turn_count > max_turns` 时强制无工具 final answer）。
+- **工具结果截断**：`build_tools_node`（nodes.py，替代 prebuilt.ToolNode）把工具返回截断到 `AGENT_TOOL_RESULT_MAX`（默认 8000 字符）再进 state，多步循环每轮重发的输入不再爆炸；单工具异常转为 `{"ok": false, "error_type": "tool_crash"}` 信封供 LLM 恢复，不抛穿 graph。
+- **prompts.py AGENT_SYSTEM**：新增「并行优先」强制节——独立工具请求（如逐篇 fetch_content 多个候选）必须在同一条消息内一次发出，一轮并行 ≈ 串行 5~10 轮，从源头减少步数与超时压力。
+- **graph.py + web/api/routers/agent.py**：`AGENT_TURN_TIMEOUT` 默认 300 → 900。
+- subagent 沿用同样的 after_agent/执行器，`build_subagent`/`SubagentSpec` 的 `max_iterations` 改名 `max_steps`（单任务窄工具面默认保持 5）。
+
+---
+
 ## web/frontend / 端口 8001 被占用（uvicorn Errno 10048）
 
 **现象**: `npm run dev` 时主进程拉起后端报 `[Errno 10048] error while attempting to bind on address ('127.0.0.1', 8001)`，后端启动即退出；渲染进程轮询 `/api/health` 等全部 ECONNREFUSED。旧版前端对 `backend-status: error` 无任何处理，UI 静默离线。
@@ -376,3 +416,62 @@ C:/Users/30811/miniconda3/envs/demo/python.exe -c "import sys; sys.path.insert(0
 ```
 
 排查口诀：报错类名不在 `PreTrainedModel` 继承链 （`peft import PeftMixedModel; PeftMixedModel.__mro__`） → 基本可判定是进程态/版本错位，先重启进程再查别的。
+
+---
+
+## LangSmith / agent 工作不被追踪（TRACING 变量失效）
+
+**现象**: LangSmith 面板看不到当前项目的 agent 工作（graph 各节点 run / LLM 调用 / 工具调用全部缺失）。旧版 v1 agent 能正常追踪，重构后消失。
+
+**原因**: 追踪开关判定在 `langsmith/utils.py::tracing_is_enabled()`：
+`get_env_var("TRACING_V2", default=get_env_var("TRACING", default="")) == "true"`，`get_env_var` 按 `LANGSMITH_*` → `LANGCHAIN_*` 顺序取值。`.env` 里写的是 `LANGSMITH_TRACING_V2=false`，SDK 读到的字面量是 `"false"` → `== "true"` 失败，且 `LANGSMITH_TRACING` 未设置，开关恒关（`false` 不会被特殊处理，必须拿到 `true` 字面量）。此前 v1 `config.py::_init_langsmith` 显式 `os.environ["LANGCHAIN_TRACING_V2"]="true"` 覆盖了 .env，v2 重构移除该初始化后 .env 的 `false` 生效。另：2026-08 期间 DNS 解析 `api.smith.langchain.com` 失败曾被当作关闭追踪的理由，现已恢复可达（解析 34.8.121.39），该约束已过期。
+
+**解决**: `.env` LangSmith 区块改为
+```
+LANGSMITH_TRACING=true
+LANGSMITH_TRACING_SAMPLING_RATE=1.0
+LANGSMITH_PROJECT=paper-agent
+```
+删除/不再依赖 `LANGSMITH_TRACING_V2`（值非 `true` 时反而抢占判定、导致 `LANGSMITH_TRACING=true` 也不生效）。注意 `.env` 必须早于任何 langchain/langsmith import 被加载（`graph.py`/`web/api/main.py` 已有 `load_dotenv` 且置于 import 链最前，保持即可）。验证：
+```python
+from langsmith.utils import get_env_var, tracing_is_enabled
+get_env_var("TRACING_V2", default=get_env_var("TRACING", default=""))  # 期望 'true'
+tracing_is_enabled()  # 期望 True
+```
+
+---
+
+## agent / 写作链路「聊天回全文，doc 只落最后一章」+ LangSmith 缺 creation
+
+**现象**: 「写综述/报告」请求跑完爆料：章节树里只有第三章 ✓，聊天却输出了完整三章正文；LangSmith 面板看不到 creator/creation 内部调用（前端 SSE 却能收到 `tool_start(creator)` + `doc_section` 事件）。
+
+**原因**: 三个独立缺陷叠加（2026-09 实测，doc 证据见 `web/workspace/docs/c41dd6e66ce5`：outline `abstract(pending)/introduction(pending)/foundations(done)`，sections 下只有 `foundations.md`）：
+1. creator `max_steps=5` 难以覆盖「读多篇论文 + 写一章」的负担，中途打满 → 子图 `_subagent_synthesize` 用泛化 prompt 把整章正文拼成 final answer，**doc_write_section 从未被调用**；
+2. executor 对 creator 步骤**无落盘校验**——subagent 以纯文本作答也被当作成功，正文原样进入 `subagent_results`；
+3. `as_tool._call` 调 `subgraph.ainvoke(init)` **不带 config**，subagent run 脱离父 trace（LangSmith 看不到）；父层 `_synthesize_plan` 又把正文合并进 context 交给 LLM 回给用户。
+
+**解决**（agent/plan.py、agent/subagents.py、agent/domains/creation.py、agent/nodes.py、agent/config.*）：
+1. creator `max_steps` 5→12（值统一放 `agent/config.yaml` 的 `subagents.creator.max_steps`，`state.py`/`build_subagents` 从 `get_limits()` 读取，env `AGENT_MAX_STEPS` 优先于文件）；executor 对 creator 步骤做确定性校验（`_verify_creator_step` → `creation.verify_section_written`，outline 该 section `status==done` 才算产出），失败判错且不转发正文，并自动补一次显式「必须 doc_write_section」重试；
+2. `_creation_plan` 强制章节串行（每章 `depends_on` 链前章），消除并行写 `doc.json` 的 read-modify-write 竞争；
+3. creation 域 synthesize 输出确定性「写作进度报告」（每章 status/字数 + doc_id），不再拼接 subagent 正文；
+4. `as_tool._call` 声明 `config: RunnableConfig` 参数并透传给 `subgraph.ainvoke(init, config=config)`，`executor` 的 `_run_step` 也把图配置传入 `tool.ainvoke(..., config=config)`——subagent 运行作为子 run 挂到父 trace。
+
+回归：`agent/tests/test_creation.py` 新增 `test_creator_step_fails_when_section_not_written` / `test_creation_plan_serializes_steps`；`test_subagents.py` fake 签名加 `config`。
+
+---
+
+## agent / 回复里出现 `[FINAL_ANSWER]` 噪声（marker 泄漏 + 持久化污染）
+
+**现象**: 用户观察到回答前缀/正文里出现 `[FINAL_ANSWER]`（或 `【FINAL_ANSWER】`）字面量；更隐蔽的是跨回合复现——第一回合正常，后续回合的「Recent/Prior Conversation」摘要里仍混入 marker 噪声。
+
+**原因**: 两处叠加（2026-09 实证）：
+1. `_stream_llm` 的前缀缓冲只 `prefix.startswith("[FINAL_ANSWER]")` 精确匹配字面量。首 chunk 是 `"\n"` 时缓冲判定失败，下一 chunk `[FINAL_ANSWER]` 原样 emit → 前端渲染 marker；全角括号 / 大小写 / 中间位置 / `[FinalAnswer]` 变体更无一能剥离。
+2. 剥离点只覆盖流式层；agent_node 返回的 AIMessage **带着 marker 回写 `state.messages`** → `checkpoints.db` → memory 摘要下轮把 marker 当正文摘要 → 反复污染后续回合上下文。
+
+**解决**（INFO_FLOW_REVIEW P1）：根因 = prompt 里的 marker 协议被删（`prompts.py` Response Protocol 改为「回答 YES 直接写最终答案」），路由 `after_agent` 本就不依赖 marker（无 tool_calls + 文本 = 终局），行为零变化。剩余防御：
+- 统一正则 `[\[【]\s*final\s*[-_ ]?\s*answer\s*[\]】]`（大小写不敏感）作为唯一兜底，`nodes._stream_llm`（前缀缓冲 → 任意位置行过滤，容忍首 chunk `\n`/全角括号/分隔符变体）与 `routers/agent._strip_marker` 共用；
+- `/chat/stream` 的 token 事件在 `_ev_pump` 统一过 `_strip_marker_segment`（不做 `.strip()`，模型 token 常以空格开头）。
+
+关联清理（同一次排查，见 `docs/INFO_FLOW_REVIEW.md`）：P3 subagent 返回提取只取「无 tool_calls 的 AI 消息」；P2 删除 `_resolved_ctx` contextvar 隐藏通道；P4 plan executor 对直接工具步骤做确定性错误恢复（transient 原参数重试 / param_error 按 `available_papers|sections` 修正）；P6 工具结果信封统一收敛到 `agent/tool_contract.py`（`ok/err/parse_tool_result/truncate_tool_result`，`_salvage_tool_content`/`_classify_tool_error`/`plan._ingest_guard` 三个解析点共用）。
+
+回归：`agent/tests/test_info_flow.py`（P1 marker 正则/剥离/前缀判定 + P6 envelope 生成/解析/截断保解析性）。

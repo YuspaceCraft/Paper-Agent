@@ -13,12 +13,14 @@ import {
 } from './state';
 import { api, setBaseUrl, markProxyReady, streamNotify, openTaskStream, whenBackendReady } from './api';
 
-import { TopBar } from './components/TopBar';
+import { TopBar, type Domain } from './components/TopBar';
 import { LeftPanel } from './components/LeftPanel';
 import { ChatView } from './components/ChatView';
 import { TaskCenter } from './components/TaskCenter';
 import { FileExplorer } from './components/FileExplorer';
 import { StatusBar } from './components/StatusBar';
+import { WriterView } from './components/WriterView';
+import { ExperimentView } from './components/ExperimentView';
 
 interface AppContextType {
   state: AppState;
@@ -43,6 +45,7 @@ const App: FC = () => {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
   const [apiOnline, setApiOnline] = useState(true);
   const [backendError, setBackendError] = useState('');
+  const [domain, setDomain] = useState<Domain>('chat');
 
   // Fetch server info (papers / index / health). Called on mount and again when
   // the Electron backend reports ready (its port is only known at that point).
@@ -455,6 +458,8 @@ const App: FC = () => {
           onToggleRight={() => dispatch({ type: 'TOGGLE_RIGHT_PANEL' })}
           onUpload={handleUpload}
           apiOnline={apiOnline}
+          domain={domain}
+          onSwitchDomain={setDomain}
         />
 
         {/* Backend startup failure (e.g. :8001 port conflict) — surface it,
@@ -507,6 +512,12 @@ const App: FC = () => {
           />
 
           <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {domain === 'write' ? (
+              <WriterView />
+            ) : domain === 'experiment' ? (
+              <ExperimentView />
+            ) : (
+            <>
             <TaskCenter
               tasks={state.bgTasks}
               activeThreadId={state.activeThreadId}
@@ -547,6 +558,8 @@ const App: FC = () => {
               }}>
                 👈 新建或选择一个对话开始
               </div>
+            )}
+            </>
             )}
           </main>
 

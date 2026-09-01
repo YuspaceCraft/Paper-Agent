@@ -1,0 +1,9 @@
+Attention-centric architectures have fundamentally transformed natural language processing, enabling unprecedented scalability, parallelization, and performance across diverse tasks—from machine translation and text generation to parsing and semantic understanding. The paradigm shift from hybrid models (e.g., RNN/CNN + attention) to *attention-only* architectures—epitomized by the Transformer—represents the core 'Attention → Attention' principle: attention is not merely a supplementary mechanism but the foundational computational primitive governing all sequence interactions [Attention]. This shift eliminated sequential bottlenecks, accelerated training, and unlocked emergent capabilities in large-scale language modeling.
+
+Despite this progress, three concrete challenges remain unresolved:
+
+- **Efficient attention variants for long sequences**: Standard self-attention scales quadratically with sequence length, making processing of documents, codebases, or high-resolution multimodal inputs computationally prohibitive. While sparse and linear approximations exist, they often sacrifice expressivity or fail to preserve global context fidelity.
+
+- **Grounding attention semantics in linguistic structure**: Learned attention weights frequently lack interpretability and do not reliably align with syntactic or semantic hierarchies (e.g., dependency relations or phrase structure). Without explicit structural priors, attention may capture superficial co-occurrence rather than linguistically meaningful dependencies.
+
+- **Mitigating spurious correlations in learned attention patterns**: Attention distributions can encode dataset-specific artifacts—such as positional biases, domain-specific lexical shortcuts, or annotation inconsistencies—rather than robust, generalizable relationships. These spurious correlations undermine model reliability, fairness, and out-of-distribution generalization.

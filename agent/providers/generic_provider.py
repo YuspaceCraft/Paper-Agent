@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import ast
 import ipaddress
-import json
 import operator
 import os
 import socket
@@ -44,17 +43,18 @@ _MAX_FETCH_BYTES = 40_000
 
 
 # ---- 错误/成功约定 ----
-# 沿用 builtin_provider 的 {"ok":false,"error_type":...} 契约，dispatcher 透传。
+# 信封统一收敛到 agent/tool_contract.py（P6）。契约：错误一律 JSON envelope；
+# 纯文本工具（read_file / list_dir / get_time / calculator / fetch_url）成功路径
+# 保证「不是合法 envelope」的 UTF-8 文本，parse_tool_result 据此分流。
 
 def _err(error_type: str, detail: str, next_action: str) -> str:
-    return json.dumps({
-        "ok": False, "error": detail, "next": next_action,
-        "error_type": error_type,
-    }, ensure_ascii=False)
+    from agent.tool_contract import err as _err_contract
+    return _err_contract(error_type, detail, next_action)
 
 
 def _ok(data: dict) -> str:
-    return json.dumps({"ok": True, "data": data}, ensure_ascii=False)
+    from agent.tool_contract import ok as _ok_contract
+    return _ok_contract(data)
 
 
 # ---- 共享辅助 ----

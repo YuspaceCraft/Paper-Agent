@@ -57,6 +57,32 @@ web/frontend/
   src/renderer/       # React 渲染进程（index.html + src/）
 ```
 
+## 领域工作区（v10 / Phase B）
+
+顶栏领域 Tab：`📚 文献问答 | ✍️ 论文写作 | 🧪 实验`（`TopBar.tsx` 的 `DOMAINS`），
+`App.tsx` 持 `domain` state（默认 chat），main 区按领域条件渲染：
+
+| 领域 | 渲染 | 说明 |
+|---|---|---|
+| chat | 既有三栏聊天 + TaskCenter | 零改动 |
+| write | `WriterView.tsx`（新） | 论文写作工作区 |
+| experiment | `ExperimentView.tsx`（Phase D） | 实验工作区 |
+
+**实验工作区（`ExperimentView.tsx`）**：顶部项目选择 + ▶ Run Experiment（inline 命令表单）
++ git 只读面板（diff/log/status）。左栏实验列表（status 徽章 + 指标摘要 + git_sha），
+右栏详情（指标表格 + 数值时序 sparkline + 日志尾部自动滚动）。3s 轮询活动项目与详情
+→ 后台 `run_experiment` 的进度/指标实时滚动。数据来自 `api.ts` 的 experiments 方法
+（`listExperimentProjects/listExperiments/getExperiment/getExperimentMetrics/
+getExperimentLogs/runExperiment/getProjectGit`）；后端 `web/api/routers/experiments.py`。
+
+**写作工作区（`WriterView.tsx`）**三栏：文档列表（`/api/creation/docs`）| 章节树
+（进度徽章 ✓，5s 轮询激活文档）| 章节 Markdown 编辑器（选中章 → textarea → PUT
+保存 → `doc_export_docx` 触发下载）。数据依赖 `api.ts` 新增 creation 方法
+（`listCreationDocs/getCreationDoc/createCreationDoc/setCreationOutline/
+writeCreationSection/downloadDocx`）；后端 `web/api/routers/creation.py` 薄封装
+`agent/domains/creation.py`。写作本体仍由聊天触发（plan → creator subagent →
+SSE `doc_section`），本工作区是「观察 + 编辑 + 导出」面板，不直接调用 agent。
+
 ## 聊天区
 
 聊天区采用 CowAgent 风格浅色主题（绿色强调 `#4abe6e`），通过 `index.css` 的 `--color-*` 变量级联，三栏布局自动跟随换色。助理消息带头像 + 圆角气泡，正文用 `react-markdown` + `react-syntax-highlighter` 渲染。

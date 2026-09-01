@@ -33,7 +33,7 @@ class _FakeSubgraph:
     def __init__(self, content):
         self._content = content
 
-    async def ainvoke(self, _input):
+    async def ainvoke(self, _input, config=None):
         return {"messages": [AIMessage(content=self._content)]}
 
 
@@ -53,17 +53,17 @@ def test_as_tool_empty_fallback():
 
 def test_build_subagent_compiles():
     a = _fake_tool("fetch_content")
-    sg, init = build_subagent("paper_reader", "sys", [a], max_iterations=3)
+    sg, init = build_subagent("paper_reader", "sys", [a], max_steps=3)
     nodes = set(sg.get_graph().nodes)
     assert {"agent", "tools"} <= nodes, "subagent must have agent + tools nodes"
     assert init["subagent_system"] == "sys"
     assert init["bound_tools"] == ["fetch_content"]
-    assert init["max_iterations"] == 3
+    assert init["max_steps"] == 3
 
 
 def test_build_subagents_names():
     # Claude Code 模式：库只读工具(search_papers/fetch_content)归父 agent，
-    # subagent 仅剩 arxiv(外网) 与 ingest(写操作)。
+    # subagent = arxiv(外网) / ingest(写) / creator(写作) / coder(实验编码, v10 Phase C)。
     fakes = [_fake_tool(n) for n in
              ("search_papers", "fetch_content", "download_paper", "ingest_paper",
               "arxiv__search_papers", "arxiv__get_paper_data",
@@ -75,7 +75,7 @@ def test_build_subagents_names():
         tools = sa.build_subagents()
     finally:
         sa.get_cached_tools = orig
-    assert {t.name for t in tools} == {"arxiv", "ingest"}
+    assert {t.name for t in tools} == {"arxiv", "ingest", "creator", "coder"}
 
 
 def test_build_subagents_skips_missing():
@@ -105,7 +105,7 @@ def test_as_tool_sets_scope():
     seen = {}
 
     class _ScopeSubgraph:
-        async def ainvoke(self, _input):
+        async def ainvoke(self, _input, config=None):
             seen["scope"] = current_scope()
             return {"messages": [AIMessage(content="ok")]}
 

@@ -15,7 +15,7 @@ ingest_paper: 解析 PDF → 向量入库（独立的显式任务，仅当用户
 
 ## 工具返回格式约定
 
-所有工具遵循统一的返回格式策略：
+信封生成/解析统一收敛在 `agent/tool_contract.py`（P6）。本模块遵循：
 
 - **结构化数据** → JSON `{"ok": true/false, "data": {...}, ...}`
   - search_papers (论文列表/搜索结果)、download_paper、ingest_paper
@@ -25,7 +25,8 @@ ingest_paper: 解析 PDF → 向量入库（独立的显式任务，仅当用户
   - fetch_content overview (标题/作者/摘要/章节列表)
   - fetch_content deep read (章节正文)
 
-_salvage_tool_content() (nodes.py) 兼容两种格式——JSON 包裹和纯文本。
+`parse_tool_result()` (tool_contract.py) 是唯一解析入口——先试 JSON envelope，
+非 envelope 一律按纯文本处理（旧版双格式猜测已删除）。
 """
 
 from __future__ import annotations
@@ -43,6 +44,11 @@ from . import ToolDef, ToolProvider
 from agent.safety import tool_allowed
 from agent.providers.generic_provider import resolve_workspace_path
 from agent.resolution import match_local_state
+from agent.library_api import (
+    api_is_down as _api_down,
+    api_mark_down as _api_mark_down,
+    api_timeout as _api_timeout,
+)
 
 API = os.environ.get("AGENT_API_BASE", "http://127.0.0.1:8000")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -65,19 +71,18 @@ def _clean_content(content: str) -> str:
 
 
 # ---- response helpers ----
+# 信封形状统一由 agent/tool_contract.py 定义（P6 收敛），此处仅转发。
+# 注意 `status` 为历史参数，从不进入信封，保留签名以兼容旧调用点。
 
 def _ok(data: dict | list) -> str:
-    return json.dumps({"ok": True, "data": data}, ensure_ascii=False, indent=2)
+    from agent.tool_contract import ok as _ok_contract
+    return _ok_contract(data)
 
 
 def _err(status: int, detail: str, next_action: str,
          error_type: str = "unknown", **ctx) -> str:
-    payload: dict = {
-        "ok": False, "error": detail, "next": next_action,
-        "error_type": error_type,
-    }
-    payload.update(ctx)
-    return json.dumps(payload, ensure_ascii=False, indent=2)
+    from agent.tool_contract import err as _err_contract
+    return _err_contract(error_type, detail, next_action, **ctx)
 
 
 def _parse_detail(e: httpx.HTTPStatusError) -> str:
@@ -91,26 +96,49 @@ def _parse_detail(e: httpx.HTTPStatusError) -> str:
         return str(e)
 
 
+def _backend_down_err() -> str:
+    """库后端不可达 → 快速失败错误信封。
+
+    error_type="backend_down" 让 nodes._format_error_feedback 把反馈写成
+    「停止重试 + 向用户报告故障」，而不是误导性的 "Server busy. Retry once"，
+    避免 agent 把整轮 TURN_TIMEOUT 烧光最后只说「回答超时」。
+    """
+    return _err(
+        503,
+        f"本地知识库后端不可达或响应超时（{API}）。"
+        "请确认后端已启动（uvicorn web.api.main:app --host 0.0.0.0 --port 8000）"
+        "或 AGENT_API_BASE 指向实际端口。",
+        "停止重试库工具。向用户说明本地知识库后端不可用，并给出启动命令/端口检查。",
+        error_type="backend_down",
+    )
+
+
 # ---- internal helpers ----
 
 async def _fetch_papers(c: httpx.AsyncClient) -> list[str]:
+    if _api_down(API):
+        return []
     try:
-        r = await c.get(f"{API}/api/reader/papers", timeout=5.0)
+        r = await c.get(f"{API}/api/reader/papers")
         r.raise_for_status()
         return [
             p.get("name", p.get("paper_name", ""))
             for p in r.json().get("papers", [])
         ]
     except Exception:
+        _api_mark_down(API)
         return []
 
 
 async def _fetch_sections(c: httpx.AsyncClient, paper: str) -> list[str]:
+    if _api_down(API):
+        return []
     try:
-        r = await c.get(f"{API}/api/reader/{paper}/sections", timeout=5.0)
+        r = await c.get(f"{API}/api/reader/{paper}/sections")
         r.raise_for_status()
         return [s["name"] for s in r.json().get("sections", [])]
     except Exception:
+        _api_mark_down(API)
         return []
 
 
@@ -142,20 +170,21 @@ async def search_papers(query: str = "", top_k: int = 5) -> str:
 
     Returns paper metadata (list mode) or matching chunks with scores (search mode).
     """
-    async with httpx.AsyncClient() as c:
+    if _api_down(API):
+        return _backend_down_err()
+    async with httpx.AsyncClient(timeout=_api_timeout(15.0)) as c:
         if not query.strip():
             try:
-                r = await c.get(f"{API}/api/reader/papers", timeout=10.0)
+                r = await c.get(f"{API}/api/reader/papers")
                 r.raise_for_status()
                 data = r.json()
             except httpx.HTTPStatusError as e:
                 return _err(e.response.status_code, _parse_detail(e),
                     "Library unavailable. Retry once.",
                     error_type="transient")
-            except httpx.TimeoutException:
-                return _err(408, "Request timed out",
-                    "Server busy. Retry once.",
-                    error_type="transient")
+            except httpx.TransportError:
+                _api_mark_down(API)
+                return _backend_down_err()
 
             papers = data.get("papers", [])
             if not papers:
@@ -177,7 +206,6 @@ async def search_papers(query: str = "", top_k: int = 5) -> str:
             r = await c.post(
                 f"{API}/api/retrieval/search",
                 json={"query": query, "top_k": top_k},
-                timeout=15.0,
             )
             r.raise_for_status()
             data = r.json()
@@ -185,10 +213,9 @@ async def search_papers(query: str = "", top_k: int = 5) -> str:
             return _err(e.response.status_code, _parse_detail(e),
                 "Search unavailable. Use search_papers() to browse all papers.",
                 error_type="transient")
-        except httpx.TimeoutException:
-            return _err(408, "Search timed out",
-                "Try a shorter query or use search_papers() to browse.",
-                error_type="transient")
+        except httpx.TransportError:
+            _api_mark_down(API)
+            return _backend_down_err()
 
         results = data.get("results", [])
         if not results:
@@ -232,21 +259,19 @@ async def fetch_content(paper_name: str, section: str = "") -> str:
     - fetch_content("RMNet")                 → abstract + section list
     - fetch_content("RMNet", "3. Methodology") → full section body text
     """
-    async with httpx.AsyncClient() as c:
+    if _api_down(API):
+        return _backend_down_err()
+    async with httpx.AsyncClient(timeout=_api_timeout()) as c:
         if not section:
             try:
-                r = await c.get(
-                    f"{API}/api/reader/{paper_name}/abstract",
-                    timeout=10.0,
-                )
+                r = await c.get(f"{API}/api/reader/{paper_name}/abstract")
                 r.raise_for_status()
                 data = r.json()
             except httpx.HTTPStatusError as e:
                 return await _paper_error(c, e, paper_name)
-            except httpx.TimeoutException:
-                return _err(408, "Request timed out",
-                    "Server busy. Retry once.",
-                    error_type="transient")
+            except httpx.TransportError:
+                _api_mark_down(API)
+                return _backend_down_err()
 
             title = data.get("title", "")
             authors = data.get("authors", "")
@@ -274,10 +299,7 @@ async def fetch_content(paper_name: str, section: str = "") -> str:
             return "\n".join(lines)
 
         try:
-            r = await c.get(
-                f"{API}/api/reader/{paper_name}/sections/{section}",
-                timeout=10.0,
-            )
+            r = await c.get(f"{API}/api/reader/{paper_name}/sections/{section}")
             r.raise_for_status()
             data = r.json()
         except httpx.HTTPStatusError as e:
@@ -288,10 +310,9 @@ async def fetch_content(paper_name: str, section: str = "") -> str:
                 error_type="param_error",
                 available_sections=available,
                 available_papers=[paper_name])
-        except httpx.TimeoutException:
-            return _err(408, "Request timed out",
-                "Try fetch_content(paper) for a quicker overview.",
-                error_type="transient")
+        except httpx.TransportError:
+            _api_mark_down(API)
+            return _backend_down_err()
 
         chunks = data.get("chunks", [])
         section_q = data.get("section_query", section)
@@ -510,7 +531,9 @@ async def ingest_paper(paper_name: str, pdf_path: str = "") -> str:
         paper_name: Paper name as shown in search_papers() list or arxiv_id of a downloaded paper.
         pdf_path: Workspace path (relative or absolute) to the PDF to process (optional).
     """
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    if _api_down(API):
+        return _backend_down_err()
+    async with httpx.AsyncClient(timeout=_api_timeout(15.0)) as client:
         try:
             r = await client.post(
                 f"{API}/api/agent/ingest",
@@ -520,9 +543,9 @@ async def ingest_paper(paper_name: str, pdf_path: str = "") -> str:
         except httpx.HTTPStatusError as e:
             return _err(e.response.status_code, _parse_detail(e),
                 "Failed to start the background ingest.", error_type="unknown")
-        except httpx.TimeoutException:
-            return _err(408, "API timeout starting ingest.",
-                "Server busy. Retry once.", error_type="transient")
+        except httpx.TransportError:
+            _api_mark_down(API)
+            return _backend_down_err()
 
     data = r.json()
     return json.dumps({
@@ -550,7 +573,9 @@ async def check_task_status(task_id: str) -> str:
     Args:
         task_id: Task id returned by ingest_paper.
     """
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    if _api_down(API):
+        return _backend_down_err()
+    async with httpx.AsyncClient(timeout=_api_timeout()) as client:
         try:
             r = await client.get(f"{API}/api/agent/tasks/{task_id}")
             r.raise_for_status()
@@ -562,9 +587,9 @@ async def check_task_status(task_id: str) -> str:
                     error_type="param_error")
             return _err(e.response.status_code, _parse_detail(e),
                 "Task status unavailable. Retry once.", error_type="transient")
-        except httpx.TimeoutException:
-            return _err(408, "Task status timed out.",
-                "Server busy. Retry once.", error_type="transient")
+        except httpx.TransportError:
+            _api_mark_down(API)
+            return _backend_down_err()
 
     return json.dumps({
         "ok": True,
@@ -600,18 +625,20 @@ async def check_paper(term: str = "") -> str:
         term: Paper name/keyword as the user calls it. Empty term returns the
             full local snapshot grouped by state.
     """
-    async with httpx.AsyncClient() as c:
+    if _api_down(API):
+        return _backend_down_err()
+    async with httpx.AsyncClient(timeout=_api_timeout()) as c:
         try:
-            r = await c.get(f"{API}/api/reader/local-papers", timeout=10.0)
+            r = await c.get(f"{API}/api/reader/local-papers")
             r.raise_for_status()
             data = r.json()
         except httpx.HTTPStatusError as e:
             return _err(e.response.status_code, _parse_detail(e),
                 "Local snapshot unavailable. Retry once.",
                 error_type="transient")
-        except httpx.TimeoutException:
-            return _err(408, "Local snapshot timed out.",
-                "Server busy. Retry once.", error_type="transient")
+        except httpx.TransportError:
+            _api_mark_down(API)
+            return _backend_down_err()
 
         papers = data.get("papers", [])
 

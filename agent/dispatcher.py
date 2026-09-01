@@ -6,7 +6,7 @@ dispatcher.py — 统一工具调度器：超时 + 重试 + 审计。
 - 重试（仅幂等工具 idempotentHint=True 对 transport 超时退避重试，上限 2）
 - 审计（结构化日志，接入 observability）
 
-保留 {"ok": false, "error_type": ...} 兼容格式——工具内部已按此返回，
+错误信封统一由 agent/tool_contract.py 定义（P6）——工具内部已按此返回，
 dispatcher 不重写错误语义，只在超时/异常边界补充类型化信息。
 """
 
@@ -103,21 +103,19 @@ class ToolDispatcher:
                           "execution_time": round(time.time() - start, 2)})
                 # 统一错误信封：工具抛异常（transport/MCP 崩溃等）时返回
                 # 结构化错误而非向上抛，让 LLM 据 error_type/next 恢复。
-                return json.dumps({
-                    "ok": False,
-                    "error": f"{type(exc).__name__}: {exc}",
-                    "next": "Retry once or use a different tool.",
-                    "error_type": "unknown",
-                }, ensure_ascii=False)
+                from .tool_contract import err as _err_contract
+                return _err_contract(
+                    "unknown", f"{type(exc).__name__}: {exc}",
+                    "Retry once or use a different tool.",
+                )
 
-        # 所有重试耗尽（仅 timeout 会走到这里）→ 返回兼容错误格式
+        # 所有重试耗尽（仅 timeout 会走到这里）→ 返回统一错误信封
         if call_id:
             emit({"type": "tool_end", "id": call_id, "name": name,
                   "status": "error", "result": f"timeout after {timeout}s",
                   "execution_time": round(time.time() - start, 2)})
-        return json.dumps({
-            "ok": False,
-            "error": f"Tool '{name}' timed out after {timeout}s.",
-            "next": "Retry once or use a different tool.",
-            "error_type": "transient",
-        }, ensure_ascii=False)
+        from .tool_contract import err as _err_contract
+        return _err_contract(
+            "transient", f"Tool '{name}' timed out after {timeout}s.",
+            "Retry once or use a different tool.",
+        )

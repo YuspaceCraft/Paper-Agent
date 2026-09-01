@@ -10,14 +10,22 @@ import os
 from langgraph.graph import MessagesState
 from pydantic import BaseModel, Field
 
+from .config import get_limits
+
 
 class UnderstandResult(BaseModel):
     """Structured output from the understand (router) node.
 
     v3: reduced from 4 intents to 3. Added confidence for clarify gating.
+    v10: added domain for 领域级路由 (paper / creation / coding).
     """
     intent: str = Field(
         description="One of: literature_search, general_chat, needs_clarify"
+    )
+    domain: str = Field(
+        default="paper",
+        description="Working domain: paper (research Q&A) | creation (writing tasks) "
+                    "| coding (experiment/code tasks). Default 'paper' if unclear.",
     )
     entities: list[str] = Field(
         default_factory=list,
@@ -59,7 +67,22 @@ class AgentState(MessagesState):
     # {papers: [{query, match, confidence, level, match_type}], section: {ordinal, text, confidence} | None}
     resolved: dict = {}
     iteration: int = 0
-    max_iterations: int = int(os.getenv("AGENT_MAX_ITERATIONS", "5"))
+    # 执行粒度双上限（v11）：
+    #   max_steps — 单 turn 内最多执行多少轮 agent↔tools 往返（step 粒度）。
+    #              只做安全网，不设常态限制：复杂工具编排（逐篇验证 20~30 步）
+    #              是合法需求，撞上限那步也执行完再收尾，绝不中途丢弃已发请求。
+    #              优先级 env AGENT_MAX_STEPS / AGENT_MAX_ITERATIONS > agent/config.yaml。
+    #   max_turns — 会话级轮次上限（turn 粒度）：超过后 agent 不再调用工具，
+    #              强制基于已有信息给出 final answer（配合 memory 摘要控制会话膨胀）。
+    #              优先级 env AGENT_MAX_TURNS > agent/config.yaml。
+    max_steps: int = int(
+        os.getenv("AGENT_MAX_STEPS")
+        or os.getenv("AGENT_MAX_ITERATIONS")
+        or get_limits().max_steps
+    )
+    # turn_count 由 understand_node 每个新回合 +1（跨回合经 checkpointer 持久化）。
+    turn_count: int = 0
+    max_turns: int = int(os.getenv("AGENT_MAX_TURNS", str(get_limits().max_turns)))
     consecutive_failures: int = 0
     # ---- Plan-and-Execute (Phase 7) ----
     # mode: "react" (single ReAct, default) | "plan" (plan_node → executor → synthesize)
@@ -75,9 +98,21 @@ class AgentState(MessagesState):
     subagent_system: str = ""
     # bound_tools: non-empty → agent_node binds only these tool names (subagent restricted set)
     bound_tools: list[str] = []
+    # ---- domain routing (v10) ----
+    # Working domain: "paper" (research Q&A) | "creation" (writing) | "coding"
+    # (experiments). understand_node labels it; domain_node rule-overrides it.
+    # LangGraph schema discards updates for keys NOT declared here — missing
+    # this field made the graph always fall back to "paper" (v10 断裂点).
+    domain: str = "paper"
+    # Active writing document (set by plan_node when the creation plan creates one).
+    doc_id: str | None = None
     # ---- governance budget ----
-    # tokens_used accumulates _estimate_tokens() across agent_node LLM calls
-    # within one turn. When it reaches token_budget, agent_node forces a
-    # final answer (no tools) to guarantee termination.
-    token_budget: int = int(os.getenv("AGENT_TOKEN_BUDGET", "20000"))
+    # tokens_used = 当前一次 agent_node LLM 调用的实际输入规模（system +
+    # 全量 messages + 当轮反馈）。语义是「本次喂给模型的上下文有没有超过上限」：
+    # 达到 token_budget 时 agent_node 强制产出 final answer（不带工具），
+    # 保证终止且不把模型输入打到真实上下文窗口外。
+    # 注意：不能把每轮输入累加——那会让多轮工具任务（逐篇 fetch_content
+    # 验证）在 3~4 轮后超线性撞线，正常任务被提前截断（TROUBLESHOOTING
+    # 「agent / 多工具任务被 token 预算提前截断」）。
+    token_budget: int = int(os.getenv("AGENT_TOKEN_BUDGET", "60000"))
     tokens_used: int = 0

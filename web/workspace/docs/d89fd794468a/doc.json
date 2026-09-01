@@ -1,0 +1,67 @@
+{
+  "doc_id": "d89fd794468a",
+  "title": "根据这几篇自然语言处理的论文，写一个综述报告，写四个章节，详略得当，详细的写400词左右",
+  "status": "done",
+  "outline": [
+    {
+      "section_id": "introduction",
+      "title": "1 Introduction",
+      "section_type": "introduction",
+      "cites": [
+        "Attention → Attention"
+      ],
+      "status": "done"
+    },
+    {
+      "section_id": "relatedwork",
+      "title": "2 The Rise and Refinement of Attention",
+      "section_type": "related_work",
+      "cites": [
+        "Attention → Attention"
+      ],
+      "status": "done"
+    },
+    {
+      "section_id": "method",
+      "title": "3 'Attention → Attention': Conceptual Shift and Implications",
+      "section_type": "method",
+      "cites": [
+        "Attention → Attention"
+      ],
+      "status": "done"
+    },
+    {
+      "section_id": "conclusion",
+      "title": "4 Conclusion and Future Directions",
+      "section_type": "conclusion",
+      "cites": [
+        "Attention → Attention"
+      ],
+      "status": "done"
+    }
+  ],
+  "sections": {
+    "introduction": {
+      "status": "done",
+      "updated_at": "2026-09-01T13:16:17",
+      "word_count": 207
+    },
+    "relatedwork": {
+      "status": "done",
+      "updated_at": "2026-09-01T13:17:02",
+      "word_count": 445
+    },
+    "method": {
+      "status": "done",
+      "updated_at": "2026-09-01T13:17:57",
+      "word_count": 256
+    },
+    "conclusion": {
+      "status": "done",
+      "updated_at": "2026-09-01T13:18:19",
+      "word_count": 211
+    }
+  },
+  "created_at": "2026-09-01T13:15:59",
+  "updated_at": "2026-09-01T13:18:19"
+}

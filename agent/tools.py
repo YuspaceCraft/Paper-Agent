@@ -67,9 +67,13 @@ async def ensure_tools(mcp_config: str | Path | None = None,
         from .providers.generic_provider import GenericProvider
         from .providers.mcp_provider import MCPProvider, load_mcp_config
         from .providers.skill_provider import SkillProvider
+        from .domains.creation import CreationProvider
+        from .domains.coding import CodingProvider
 
         providers = [
             BuiltinProvider(),
+            CreationProvider(),   # 创作域 doc 工具（creator subagent 可见）
+            CodingProvider(),     # 编码域实验/git/delegate/study 工具（coder subagent 可见）
             GenericProvider(),
             MCPProvider(load_mcp_config(mcp_config)),
             SkillProvider(skills_dir),

@@ -17,23 +17,21 @@ import re
 import os
 
 import httpx
-import contextvars as _ctxvars
+
+from .library_api import (
+    api_is_down as _api_down,
+    api_mark_down as _api_mark_down,
+    api_timeout as _api_timeout,
+)
 
 API = os.environ.get("AGENT_API_BASE", "http://127.0.0.1:8000")
 
-# Resolved references for the current asyncio task, threaded across the
-# parent→subagent boundary. contextvars propagate through `await` within the
-# same task, so as_tool() (same task) can read what resolve_node matched —
-# without this the subagent starts with an empty `resolved` and re-searches
-# papers the parent already resolved.
-_resolved_ctx: _ctxvars.ContextVar[dict | None] = _ctxvars.ContextVar(
-    "resolved_ctx", default=None
-)
-
-
-def get_resolved_ctx() -> dict | None:
-    """Resolved paper references for the current task, set by resolve_node."""
-    return _resolved_ctx.get()
+# (P2) 已删除 parent→subagent 的 contextvar 隐藏通道（`_resolved_ctx`）：
+#   1. 不可见——父代理 model 不知道自己的 task 会被注入 resolved；
+#   2. 非零状态——与 system prompt 反复声明的 zero-state 矛盾；
+#   3. 无生命周期——从不 reset，长驻循环里旧 turn 的 resolved 会泄漏。
+# 必要上下文由父代理按 AGENT_SYSTEM「Delegation Priority」约定显式写进 task。
+# state["resolved"] 仍是 checkpointed 官方状态，仅删侧通道。
 
 # ---- confidence levels ----
 
@@ -137,20 +135,26 @@ _PAPERS_CACHE_TTL = 30  # seconds
 
 
 async def fetch_papers(force: bool = False) -> list[dict]:
-    """Fetch all available papers from the reader API. Cached for 30s."""
+    """Fetch all available papers from the reader API. Cached for 30s.
+
+    后端不可达（熔断窗口内）直接返回缓存/空，不在 resolve 阶段空等网络。
+    """
     global _papers_cache, _papers_cache_ts
     import time
     now = time.time()
     if not force and _papers_cache is not None and now - _papers_cache_ts < _PAPERS_CACHE_TTL:
         return _papers_cache
+    if _api_down(API):
+        return _papers_cache if _papers_cache is not None else []
     try:
-        async with httpx.AsyncClient() as c:
-            r = await c.get(f"{API}/api/reader/papers", timeout=5.0)
+        async with httpx.AsyncClient(timeout=_api_timeout()) as c:
+            r = await c.get(f"{API}/api/reader/papers")
             r.raise_for_status()
             _papers_cache = r.json().get("papers", [])
             _papers_cache_ts = now
             return _papers_cache
     except Exception:
+        _api_mark_down(API)
         return _papers_cache if _papers_cache is not None else []
 
 
@@ -299,7 +303,6 @@ async def resolve_node(state: dict, _config=None) -> dict:
             candidates.append(e.strip())
 
     if not candidates:
-        _resolved_ctx.set({"papers": [], "section": None})
         return {"resolved": {"papers": [], "section": None}}
 
     papers = await fetch_papers()
@@ -326,5 +329,4 @@ async def resolve_node(state: dict, _config=None) -> dict:
         "papers": resolved_papers,
         "section": section,
     }
-    _resolved_ctx.set(resolved)
     return {"resolved": resolved}

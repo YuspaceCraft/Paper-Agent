@@ -13,7 +13,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import re
 import time
 
 from fastapi import APIRouter
@@ -28,11 +27,26 @@ router = APIRouter(prefix="/api/agent", tags=["Agent"])
 # ---- internal ----
 
 _agent = None
-_FINAL_MARKER = re.compile(r'\[FINAL_ANSWER\]\s*\n?')
+
+
+def _strip_marker_segment(seg: str) -> str:
+    """token 段级 marker 兜底过滤（不做 strip——模型 token 常以空格开头）。"""
+    from agent.nodes import _FINAL_ANSWER_RE
+    return _FINAL_ANSWER_RE.sub("", seg)
+
+
+def _strip_marker(text: str) -> str:
+    """Remove legacy [FINAL_ANSWER]/【FINAL_ANSWER】 protocol markers (P1).
+
+    统一正则（大小写不敏感 + 全角括号 + final-answer 分隔符变体），
+    非流式 /_chat 整条回答兜底过滤。
+    """
+    return _strip_marker_segment(text).strip()
 
 # Whole-turn timeout — mirrors agent.graph.TURN_TIMEOUT. Bounds the entire
 # request so a runaway loop can't hold the HTTP connection open forever.
-_TURN_TIMEOUT = float(os.getenv("AGENT_TURN_TIMEOUT", "300"))
+# 默认 900s（与 graph.py 对齐）：复杂工具编排（max_steps 默认 30）是分钟级任务。
+_TURN_TIMEOUT = float(os.getenv("AGENT_TURN_TIMEOUT", "900"))
 
 
 async def _get_agent():
@@ -65,11 +79,6 @@ async def _iter_stream(stream, deadline: float):
             yield await asyncio.wait_for(stream.__anext__(), timeout=remaining)
         except StopAsyncIteration:
             return
-
-
-def _strip_marker(text: str) -> str:
-    """Remove the [FINAL_ANSWER] protocol marker from display text."""
-    return _FINAL_MARKER.sub("", text).strip()
 
 
 # ---- endpoints ----
@@ -142,7 +151,7 @@ async def chat_stream(req: AgentChatRequest):
       {"type":"error","message":"..."}              — error
     """
     agent = await _get_agent()
-    from langchain_core.messages import HumanMessage, AIMessageChunk, ToolMessage
+    from langchain_core.messages import HumanMessage, ToolMessage
     from agent.subagents import SUBAGENT_NAMES
 
     async def _stream():
@@ -185,36 +194,15 @@ async def chat_stream(req: AgentChatRequest):
                     ):
                         node = (meta or {}).get("langgraph_node", "")
                         # ── LLM token streaming ──
-                        if isinstance(msg, AIMessageChunk):
-                            if msg.content:
-                                # ponytail: mask per chunk — PII split across chunks
-                                # may slip through; full-answer masking would require
-                                # buffering the whole turn (defeats streaming).
-                                await out.put(_ss_event({
-                                    "type": "token",
-                                    "content": sanitize_output(msg.content),
-                                }))
+                        # (P5) 节点内手动 model.astream() 不产生 graph 级 messages
+                        # 流的 AIMessageChunk——token 事件只有 _ev_pump 一条路
+                        # （_stream_llm → event 队列）。此处不再有 chunk 分支；
+                        # 若未来框架行为变化（chunk 进入本流），需在 emit token 时
+                        # 与 event 队列去重，避免双份输出。这里只处理 graph 级
+                        # 返回的完整 AIMessage（tool_calls 边界）与 ToolMessage。
 
-                            if msg.tool_calls and node == "agent":
-                                # Emit one tool_start per new tool call (deduped by id).
-                                for tc in msg.tool_calls:
-                                    # subagent 工具由其 as_tool._call 自己 emit 边界
-                                    # （含 run_id），这里跳过，避免重复卡片。
-                                    if tc.get("name", "") in SUBAGENT_NAMES:
-                                        continue
-                                    cid = tc.get("id", "")
-                                    if cid not in seen_tool_call_ids:
-                                        seen_tool_call_ids.add(cid)
-                                        tool_start_times[cid] = time.monotonic()
-                                        await out.put(_ss_event({
-                                            "type": "tool_start",
-                                            "id": cid,
-                                            "name": tc.get("name", ""),
-                                            "args": tc.get("args", {}),
-                                        }))
-
-                        # ── Non-streaming AI message (non-streaming models / graph) ──
-                        elif hasattr(msg, "content") and hasattr(msg, "type") and msg.type == "ai":
+                        # ── AI message（graph 节点最终返回的消息）──
+                        if hasattr(msg, "content") and hasattr(msg, "type") and msg.type == "ai":
                             if msg.tool_calls:
                                 # Only the "agent" node issues real tool calls; understand/
                                 # plan use function-calling for structured output and would
@@ -264,9 +252,11 @@ async def chat_stream(req: AgentChatRequest):
                     if ev is _EV_STOP:
                         return
                     # Token events originate in nodes (via _stream_llm) — apply the
-                    # same PII mask the message pump applies to LLM output.
+                    # same PII mask + legacy-marker 兜底过滤 (P1) the message pump
+                    # would apply to LLM output.
                     if isinstance(ev, dict) and ev.get("type") == "token":
-                        ev = {**ev, "content": sanitize_output(ev.get("content", ""))}
+                        ev = {**ev, "content": sanitize_output(
+                            _strip_marker_segment(ev.get("content", "")))}
                     await out.put(_ss_event(ev))
 
             msg_task = asyncio.create_task(_msg_pump())

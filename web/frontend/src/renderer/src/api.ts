@@ -54,6 +54,16 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return r.json();
 }
 
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const r = await fetch(withBase(path), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
+}
+
 // ---- SSE ----
 
 export type SSEEvent =
@@ -321,4 +331,92 @@ export const api = {
   // Indexing
   runIndexing: (ragChunksPath: string) =>
     post<{ task_id: string; status: string }>('/api/index/run', { rag_chunks_path: ragChunksPath, config_path: '' }),
+
+  // ---- Creation (写作工作区, v10 / Phase B) ----
+  listCreationDocs: (status = '') =>
+    get<{ docs: CreationDocMeta[] }>(`/api/creation/docs${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  getCreationDoc: (docId: string) => get<CreationDoc>(`/api/creation/docs/${encodeURIComponent(docId)}`),
+  createCreationDoc: (title: string) =>
+    post<{ doc_id: string }>('/api/creation/docs', { title }),
+  setCreationOutline: (docId: string, outline: SectionOutline[]) =>
+    put<{ outline: SectionOutline[] }>(`/api/creation/docs/${encodeURIComponent(docId)}/outline`, { outline }),
+  writeCreationSection: (docId: string, sectionId: string, content: string) =>
+    put<{ doc_id: string; section_id: string; status: string; word_count: number }>(
+      `/api/creation/docs/${encodeURIComponent(docId)}/sections/${encodeURIComponent(sectionId)}`,
+      { content },
+    ),
+  /** 导出 docx → 触发浏览器/Electron 下载（a[download]）。 */
+  downloadDocx: async (docId: string) => {
+    const r = await fetch(withBase(`/api/creation/docs/${encodeURIComponent(docId)}/export-docx`));
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${docId}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
+  // ---- Experiments（实验工作区, v10 / Phase D）----
+  listExperimentProjects: () => get<{ projects: string[] }>('/api/experiments/projects'),
+  listExperiments: (project = '') =>
+    get<{ experiments: Experiment[] }>(`/api/experiments${project ? `?project=${encodeURIComponent(project)}` : ''}`),
+  getExperiment: (expId: string) =>
+    get<Experiment>(`/api/experiments/${encodeURIComponent(expId)}`),
+  getExperimentMetrics: (expId: string) =>
+    get<{ exp_id: string; metrics: Record<string, unknown> }>(`/api/experiments/${encodeURIComponent(expId)}/metrics`),
+  getExperimentLogs: (expId: string) =>
+    get<{ exp_id: string; log: string }>(`/api/experiments/${encodeURIComponent(expId)}/logs`),
+  runExperiment: (project: string, command: string, name = '') =>
+    post<{ exp_id: string; status: string; project: string }>('/api/experiments/run', { project, command, name }),
+  getProjectGit: (project: string, kind: 'diff' | 'log' | 'status' = 'diff') =>
+    get<{ kind: string; output: string }>(`/api/experiments/projects/${encodeURIComponent(project)}/git?kind=${kind}`),
 };
+
+// ---- Creation types (v10 / Phase B) ----
+
+export interface CreationDocMeta {
+  doc_id: string;
+  title: string;
+  status: string;
+  n_sections: number;
+  updated_at: string;
+}
+
+export interface SectionOutline {
+  section_id: string;
+  title: string;
+  section_type: string;
+  cites: string[];
+  status: 'pending' | 'writing' | 'done';
+}
+
+export interface CreationDoc {
+  doc_id: string;
+  title: string;
+  status: string;
+  outline: SectionOutline[];
+  sections: Record<string, { status: string; updated_at: string; word_count: number }>;
+  sections_content: Record<string, string>;
+  assembled_md: string;
+  updated_at: string;
+}
+
+// ---- Experiment types (v10 / Phase D) ----
+
+export interface Experiment {
+  exp_id: string;
+  project: string;
+  name: string;
+  command: string;
+  status: 'pending' | 'running' | 'done' | 'failed' | 'unknown';
+  exit_code: number | null;
+  git_sha: string;
+  metrics: Record<string, unknown>;
+  created_at: string;
+  finished_at: string;
+  log_tail?: string;
+}

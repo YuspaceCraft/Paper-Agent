@@ -172,9 +172,10 @@ PDF
 | `build_graph()` / `get_agent()` / `run(query, thread_id=)` | `agent/graph.py` | 状态机构建与运行；同 thread_id 保持多轮会话 |
 | `understand_node` `memory_node` `resolve_node` `synthesize_node` `chat_node` `clarify_node` + `route_intent` | `agent/nodes.py` `agent/resolution.py` | 各节点实现 |
 | `decide_mode` / `plan_node` / `executor_node` | `agent/plan.py` | plan-and-execute（多论文/对比类走 plan，单条走 react） |
-| `build_search_subgraph()` | `agent/search_loop.py` | agent↔tools ReAct 循环（max 5 迭代） |
+| `build_search_subgraph()` | `agent/search_loop.py` | agent↔tools ReAct 循环（step 上限 `state.max_steps` 默认 30，`AGENT_MAX_STEPS`/兼容旧名 `AGENT_MAX_ITERATIONS`；turn 上限 `max_turns` 默认 50） |
 | `ensure_tools()` / `get_cached_tools()` | `agent/tools.py` | 工具装配（builtin + generic + MCP） |
 | `load_mcp_config()` / `MCPProvider` | `agent/providers/mcp_provider.py` | 从 `.mcp.json` 加载外部 MCP 工具 |
+| `load_limits()` / `get_limits()` | `agent/config.py` + `agent/config.yaml` | **执行约束统一配置** — 父 agent `max_steps`/`max_turns` + 各 subagent `max_steps`（`subagents.<name>`）。优先级 env `AGENT_MAX_STEPS`/`AGENT_MAX_TURNS` > yaml > 代码默认；`state.py` 默认值与 `build_subagents` 都从它取值 |
 | `AgentState` | `agent/state.py` | 图状态 schema |
 
 ### retrieval_orchestrator（离线评估）
@@ -197,6 +198,7 @@ PDF
 | Agent 内置工具连接失败 | `AGENT_API_BASE` 端口与后端不符 | web/frontend |
 | HF 下载 / npm / electron | 国内网络卡住 → 镜像源（见 TROUBLESHOOTING） | 通用 + web/frontend |
 | agent 产出空 | subagent 无 final answer → 查 synthesize 节点错误反馈 | agent |
+| 写作「聊天回全文、doc 只落最后一章」 | creator 未落盘 + config 未透传 → 查 TROUBLESHOOTING「写作链路」；修复 = 落盘校验 + 串行 + 进度 synthesize | agent |
 
 ## Dependencies
 

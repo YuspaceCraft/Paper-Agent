@@ -1,0 +1,37 @@
+{
+  "doc_id": "c41dd6e66ce5",
+  "title": "根据这几篇自然语言处理的论文写一篇综述报告，先写三章",
+  "status": "writing",
+  "outline": [
+    {
+      "section_id": "abstract",
+      "title": "Abstract",
+      "section_type": "abstract",
+      "cites": [],
+      "status": "pending"
+    },
+    {
+      "section_id": "introduction",
+      "title": "1 Introduction",
+      "section_type": "introduction",
+      "cites": [],
+      "status": "pending"
+    },
+    {
+      "section_id": "foundations",
+      "title": "2 Foundations of Natural Language Processing",
+      "section_type": "other",
+      "cites": [],
+      "status": "done"
+    }
+  ],
+  "sections": {
+    "foundations": {
+      "status": "done",
+      "updated_at": "2026-09-01T11:07:08",
+      "word_count": 297
+    }
+  },
+  "created_at": "2026-09-01T11:06:29",
+  "updated_at": "2026-09-01T11:07:08"
+}

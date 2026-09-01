@@ -1,10 +1,11 @@
 """
 subagents.py — Multi-Agent runtime (Phase 8).
 
-build_subagent: compiles a subagent subgraph (agent_node + restricted ToolNode
-    + loop) — reuses the same agent_node/after_agent as the parent search loop,
-    differing only in restricted tools, dedicated system prompt, and isolated
-    context (own message list, invisible to the parent).
+build_subagent: compiles a subagent subgraph (agent_node + restricted tool
+    executor + loop) — reuses the same agent_node/after_agent/build_tools_node
+    as the parent search loop, differing only in restricted tools, dedicated
+    system prompt, and isolated context (own message list, invisible to the
+    parent).
 as_tool: wraps a subgraph as a parent-callable tool ("task in → summary out").
 build_subagents: config-driven factory — one SubagentSpec per subagent
     (arxiv / ingest — Claude Code 模式：仅写/外网操作隔离，库只读工具归父 agent),
@@ -13,26 +14,26 @@ build_subagents: config-driven factory — one SubagentSpec per subagent
 
 from __future__ import annotations
 
-import json
 import time
 import uuid
 from dataclasses import dataclass
 
 from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolNode
 from langchain_core.tools import StructuredTool
+from langchain_core.runnables.config import RunnableConfig
 from pydantic import BaseModel, Field
 
 from .state import AgentState
-from .nodes import agent_node, after_agent
+from .nodes import agent_node, after_agent, build_tools_node
 from .tools import get_cached_tools
+from .config import get_limits
 from .stream import emit, set_scope, reset_scope
 
 
 # ---- runtime factory ----
 
 async def _subagent_synthesize(state: AgentState, config) -> dict:
-    """Safety net: subagent exhausted max_iterations without a final answer.
+    """Safety net: subagent exhausted max_steps without a final answer.
 
     Mirrors the parent's synthesize slow path — one final LLM call over the
     accumulated tool results, falling back to raw salvaged content. Without
@@ -62,19 +63,23 @@ async def _subagent_synthesize(state: AgentState, config) -> dict:
     return {"messages": [AIMessage(content=text or "No answer produced.")]}
 
 
-def build_subagent(name, system_prompt, tools, *, max_iterations=5):
+def build_subagent(name, system_prompt, tools, *, max_steps=5):
     """Compile a subagent subgraph + its initial-state overrides.
 
     Returns (subgraph, init_state). The subagent config (subagent_system +
-    bound_tools + max_iterations) is returned separately instead of baked into
+    bound_tools + max_steps) is returned separately instead of baked into
     a state subclass, because LangGraph does NOT pick up TypedDict class-attribute
     defaults — a subclass like `class S(AgentState): bound_tools = [...]` compiles
     but `state["bound_tools"]` is empty at runtime (KeyError). as_tool() merges
     init_state into the subgraph's input.
+
+    Step 上限按 subagent 工作负担显式设置（SubagentSpec.max_steps）：subagent
+    都是单任务窄工具面（arxiv 检索 / ingest 入库），一般 1~5 步足够，默认保持
+    5；父 agent 的复杂编排走 state.max_steps（默认 30）。
     """
     sg = StateGraph(AgentState)
     sg.add_node("agent", agent_node)
-    sg.add_node("tools", ToolNode(tools))
+    sg.add_node("tools", build_tools_node(tools))
     sg.add_node("synthesize", _subagent_synthesize)
     sg.set_entry_point("agent")
     sg.add_conditional_edges(
@@ -86,7 +91,7 @@ def build_subagent(name, system_prompt, tools, *, max_iterations=5):
     init_state = {
         "subagent_system": system_prompt,
         "bound_tools": [t.name for t in tools],
-        "max_iterations": max_iterations,
+        "max_steps": max_steps,
     }
     return sg.compile(), init_state
 
@@ -101,7 +106,11 @@ def as_tool(name, subgraph, description, args_model=SubagentArgs, init_state=Non
     subagent's internal tool messages (context isolation)."""
     from langchain_core.messages import HumanMessage
 
-    async def _call(**kwargs) -> str:
+    # langchain-core 1.4 的 `_get_runnable_config_param` 用 `type_ is RunnableConfig`
+    # 严格身份比较判定是否注入 config,而且 `get_type_hints` 会把「带 None 默认值
+    # 的参数」推断成 Optional → 身份不符 → 不注入。所以这里必须: ①注解裸
+    # RunnableConfig ②不能有 None 默认值(StructuredTool._arun 总会注入 config)。
+    async def _call(config: RunnableConfig, **kwargs) -> str:
         task = kwargs.get("task", "")
         # subagent 边界由这里权威发出（父层 router/executor 对 subagent 工具
         # 跳过 emit，避免重复卡片）。run_id 同时是叶子工具事件的 parent_id，
@@ -113,29 +122,42 @@ def as_tool(name, subgraph, description, args_model=SubagentArgs, init_state=Non
         emit({"type": "tool_start", "id": run_id, "name": name,
               "kind": "subagent", "args": {"task": task}})
         try:
-            # Thread the parent's resolved references across the boundary.
-            # The subgraph gets a fresh state (only `task`), so without this
-            # it re-searches papers the parent already matched.
-            from .resolution import get_resolved_ctx
-            resolved = get_resolved_ctx()
+            # (P2) 零状态: 不再从 contextvar 注入父级的 `resolved`——subagent 的
+            # system 反复声明自身的 "task 自包含"。已确认的论文名由父代理按
+            # AGENT_SYSTEM「Delegation Priority」约定直接写进 task 字符串
+            # （显式上下文，无隐藏通道；未来 contextvar 不跨线程传播也不受影响）。
             init: dict = {"messages": [HumanMessage(content=task)]}
             if init_state:
                 init.update(init_state)
-            if resolved and resolved.get("papers"):
-                init["resolved"] = resolved
-            result = await subgraph.ainvoke(init)
+            # config 透传: 让 subgraph 作为当前 run 的子 run 挂到同一 LangSmith
+            # trace。此前不带 config 地 ainvoke 会脱离父 trace(日志看不到 creation
+            # 内部调用,SSE 却正常)。注意 arun 注入的 config 不带 callbacks,带
+            # callbacks 的 child_config 在 var_child_runnable_config 里——优先用它。
+            run_config = config
+            try:
+                from langchain_core.runnables.config import var_child_runnable_config
+                ctx_cfg = var_child_runnable_config.get()
+                if ctx_cfg is not None:
+                    run_config = ctx_cfg
+            except Exception:
+                pass
+            result = await subgraph.ainvoke(init, config=run_config)
             answer = ""
+            # (P3) 只取「无 tool_calls 的 AI 消息」作为最终答案——带 tool_calls 的
+            # AI 消息仍是中途状态（正计划下一步/被 max_steps 截断），其 content
+            # 再长也不是答案。
             for m in reversed(result.get("messages", [])):
-                if getattr(m, "type", "") == "ai" and getattr(m, "content", "").strip():
+                if getattr(m, "type", "") != "ai":
+                    continue
+                if getattr(m, "tool_calls", None):
+                    continue
+                if getattr(m, "content", "").strip():
                     answer = str(m.content).strip()
                     break
             ok = bool(answer)
             if not ok:
-                answer = json.dumps({
-                    "ok": False,
-                    "error": "subagent produced no final answer",
-                    "error_type": "unknown",
-                }, ensure_ascii=False)
+                from .tool_contract import err as _err_contract
+                answer = _err_contract("unknown", "subagent produced no final answer")
             emit({"type": "tool_end", "id": run_id, "name": name,
                   "status": "success" if ok else "error",
                   "result": answer[:4000],
@@ -165,7 +187,7 @@ class SubagentSpec:
     description: str      # shown to the parent agent when selecting the subagent
     system_prompt: str    # context injected into the subagent
     tools: list[str]      # permitted tool names (injected subset)
-    max_iterations: int = 5
+    max_steps: int = 5    # step 粒度的子代理轮次上限（单任务窄工具面够用）
 
 
 ARXIV_SYSTEM = """\
@@ -270,6 +292,89 @@ and the parent tracks it via check_task_status(task_id).
 Output ONLY a short status summary. No preamble."""
 
 
+CREATOR_SYSTEM = """\
+You are the scientific writing specialist. Write the EXACT section requested in the
+task — nothing more. The task is self-contained (zero-state): it carries the document
+id, the section id/title, the reference papers, and the writing style. Never invent
+information absent from the task or from tool results.
+
+Toolset (all you may call):
+- doc_write_section(doc_id, section_id, content): atomic write of one section's
+  Markdown. The section must exist in the doc outline. ALWAYS finish by calling this
+  with the full written section — a section without doc_write_section is not produced.
+- doc_get_state(doc_id): read the doc outline / prior sections (avoid repetition and
+  keep cross-section consistency).
+- search_papers(query, top_k) / fetch_content(paper_name, section): gather comparison
+  material from the LOCAL library when the task references papers. Cite with [N]
+  markers inline next to the supported claim (keep them verbatim — the parent resolves
+  them to [Paper, page N] later).
+- read_file / list_dir: inspect workspace files only if the task explicitly needs them.
+
+Writing rules (scientific, structured):
+1. Structure the section with short academic paragraphs; use bullets/tables/figure
+   captions only when the section type calls for them. Concise, no fluff.
+2. Every factual claim about a paper must trace to a tool result in this conversation
+   (fetch_content / search_papers). Papers you could NOT read → either skip that claim
+   or mark it "untreated in this section".
+3. Inline citations [N]: place the marker immediately after the sentence it supports.
+4. Do NOT write the section heading inside the content — the tool stores the title
+   separately.
+5. Zero-state: the task contains everything you need. Do not reference previous
+   conversations or other agents.
+
+MANDATORY workflow — reading is never the endpoint:
+1. If reference papers exist in the library, read enough to ground this section
+   (search_papers / fetch_content). Do NOT stop after reading.
+2. Compose the full section as Markdown in your head.
+3. Call doc_write_section(doc_id, section_id, content) with the ENTIRE content in
+   ONE call. This tool call is the REQUIRED final action.
+4. Never finish your turn with a plain-text answer instead of the tool call — a
+   section that was not written via doc_write_section does not exist.
+
+Output: after doc_write_section succeeds, output ONLY a short status line, no
+preamble, no restated content:
+<section_id> | <word count> words | wrote via doc_write_section\
+"""
+
+
+CODER_SYSTEM = """\
+You are the experiment/code specialist. Execute the task inside an experiment project
+under web/workspace/experiments/<project>. The task is self-contained (zero-state).
+
+Toolset (all you may call):
+- run_experiment(project, command, name): run a command in that project as a
+  BACKGROUND experiment — logs stream to runs/<exp_id>/run.log, metrics.json/
+  metrics.csv written by the command are parsed on completion. Returns exp_id.
+- experiment_status(exp_id) / experiment_list(project) / read_metrics(exp_id):
+  inspect results (status / exit_code / git_sha / metrics / log tail).
+- git_status(project) / git_diff(project) / git_log(project) / git_commit(project, message):
+  version-control the project (commit = destructive, gated).
+- delegate_code_task(project, prompt): hand a coding job (implement/tune/fix/
+  refactor) to the EXTERNAL coding agent — it edits files directly in the project
+  and returns a summary + changed_files. Use this for CODE CHANGES; do not hand
+  write files yourself.
+- study_context(topic) / study_add_hypothesis(topic, hypothesis): read/write the
+  study knowledge base (prior experiments = comparison baseline for optimization).
+- read_file / list_dir / search_papers / fetch_content: inspect code and reference papers.
+
+Workflow (recommended):
+1. Explore: list_dir + git_status (+ read_file of the key script) to learn the project.
+2. Read study_context(topic) for the baseline/SOTA and prior experiment metrics.
+3. Run experiments: run_experiment → experiment_status (poll until done) →
+   read_metrics. Compare numbers vs baseline.
+4. To improve: delegate_code_task to change code, then re-run and re-compare
+   (loop at most 2 improvement iterations unless the user wants more).
+5. git_commit a logical checkpoint when a change is verified (message describes it).
+
+Honesty:
+- Never report metrics/files the tools did not return — copy values verbatim.
+- If run_experiment fails, show the real error snippet, do not invent a fix as done.
+- Keep the summary short: what was run (exp_id), the metrics delta vs baseline,
+  what was changed (files), and the recommended next step.
+
+Output ONLY a short status summary. No preamble."""
+
+
 SUBAGENTS: list[SubagentSpec] = [
     SubagentSpec(
         name="arxiv",
@@ -300,6 +405,48 @@ SUBAGENTS: list[SubagentSpec] = [
         system_prompt=INGEST_SYSTEM,
         tools=["download_paper", "ingest_paper"],
     ),
+    SubagentSpec(
+        name="creator",
+        description=(
+            "Write one section/chapter of a research document given a "
+            "self-contained writing task (doc_id, section_id/title, reference "
+            "papers, style). Gathers comparison material from the library and "
+            "writes the section atomically via doc_write_section. Returns only "
+            "a status line. Use for paper/review/report section drafting."
+        ),
+        system_prompt=CREATOR_SYSTEM,
+        tools=[
+            "doc_write_section", "doc_get_state", "doc_create",
+            "doc_set_outline", "doc_list", "doc_export_docx",
+            "search_papers", "fetch_content",
+            "read_file", "list_dir",
+        ],
+        # 综述章节要先读多篇论文(fetch_content 多轮)再落盘;5 轮会中途打满 →
+        # 路由到 _subagent_synthesize 用泛化 prompt 拼出正文、章节永不写盘。
+        # 12 覆盖「读 3-5 篇 + doc_get_state + doc_write_section」的典型负担。
+        # 实际生效值由 agent/config.yaml `subagents.creator.max_steps` 决定,
+        # 此处为无配置文件时的代码兜底。
+        max_steps=12,
+    ),
+    SubagentSpec(
+        name="coder",
+        description=(
+            "Run experiments and improve code inside an experiment project "
+            "(web/workspace/experiments/<project>): run commands in the background, "
+            "poll metrics, delegate code changes to the external coding agent, "
+            "follow git versioning, read the study knowledge base for baselines. "
+            "Use for 复现/跑实验/调参/优化代码/读指标 requests."
+        ),
+        system_prompt=CODER_SYSTEM,
+        tools=[
+            "run_experiment", "experiment_status", "experiment_list", "read_metrics",
+            "git_status", "git_diff", "git_log", "git_commit",
+            "delegate_code_task",
+            "study_context", "study_add_hypothesis",
+            "read_file", "list_dir",
+            "search_papers", "fetch_content",
+        ],
+    ),
 ]
 
 
@@ -315,18 +462,25 @@ def build_subagents(tools: dict | None = None):
 
     Tools not present in `tools` are silently skipped; a subagent whose whole
     toolset is missing is omitted.
+
+    Step 上限(tool 轮次)统一走 agent/config.yaml: `subagents.<name>.max_steps`
+    覆盖 SUBAGENTS 表里的代码默认(表默认值作为无配置文件时的兜底)。
     """
     if tools is None:
         tools = {t.name: t for t in get_cached_tools()}
+
+    limits = get_limits()
 
     out = []
     for spec in SUBAGENTS:
         toolset = [tools[n] for n in spec.tools if n in tools]
         if not toolset:
             continue
+        cfg = limits.subagents.get(spec.name) if limits else None
+        max_steps = cfg.max_steps if cfg else spec.max_steps
         subgraph, init_state = build_subagent(
             spec.name, spec.system_prompt, toolset,
-            max_iterations=spec.max_iterations,
+            max_steps=max_steps,
         )
         out.append(as_tool(spec.name, subgraph, spec.description,
                            init_state=init_state))

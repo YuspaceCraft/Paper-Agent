@@ -111,6 +111,43 @@ SSE 事件类型（`/api/agent/chat/stream`）：
 
 路径安全边界复用 `agent/providers/generic_provider.py:resolve_workspace_path`（工作区根 = 项目根，越界 / symlink / `..` 穿越即 403）。供桌面客户端文件 explorer 使用。
 
+### 创作（Creation）— `routers/creation.py`（v10 / Phase A）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/creation/docs?status=` | 列出写作文档（可选 status 过滤） |
+| POST | `/api/creation/docs` | 建 doc `{title}` → `{doc_id}` |
+| PUT | `/api/creation/docs/{doc_id}/outline` | 落大纲 `{outline: [{section_id, title, section_type, cites}]}` |
+| PUT | `/api/creation/docs/{doc_id}/sections/{section_id}` | 原子写章节 `{content: <markdown>}`（更新进度 + SSE `doc_section`） |
+| GET | `/api/creation/docs/{doc_id}` | 文档全状态（outline + sections + assembled_md） |
+| GET | `/api/creation/docs/{doc_id}/export-docx` | 下载 .docx（python-docx 渲染，FileResponse） |
+
+薄封装：序列化 + 文件响应，领域逻辑在 `agent/domains/creation.py`（`web/workspace/docs/{doc_id}/` 落盘）。agent 内部文档工具直接调模块（不走 HTTP）。
+
+### 实验（Experiments）— `routers/experiments.py`（v10 / Phase C）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/experiments/projects` | 实验项目列表 |
+| GET | `/api/experiments?project=` | 实验列表（可选 project 过滤，newest first） |
+| POST | `/api/experiments/run` | 后台启动实验 `{project, command, name}` → `{exp_id, status: running}` |
+| GET | `/api/experiments/{exp_id}` | 实验状态（status / exit_code / git_sha / metrics / log_tail） |
+| GET | `/api/experiments/{exp_id}/metrics` | 解析后指标（metrics.json / metrics.csv） |
+| GET | `/api/experiments/{exp_id}/logs` | 完整日志（~20KB） |
+| GET | `/api/experiments/projects/{project}/git?kind=diff\|log\|status` | 项目 git 只读面板（Phase D） |
+
+数据落在 `web/workspace/experiments/{project}/`（`_runs/{exp_id}/` 快照: state.json +
+run.log + metrics 快照）；实验结束确定性归档进研究知识库。
+
+### 研究知识库（Study）— `routers/study.py`（v10 / Phase C）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/study/context?topic=` | 知识库（hypotheses / 近期实验记录含指标 / findings） |
+| POST | `/api/study/hypotheses?topic=` | 追加研究假设 `{hypothesis}` |
+
+落盘 `web/workspace/studies/{topic}/knowledge.json`（领域逻辑在 `agent/domains/coding.py`）。
+
 ## 去重
 
 上传 PDF 时自动基于 Redis 进行三层去重检查（O(1) 查询）：
