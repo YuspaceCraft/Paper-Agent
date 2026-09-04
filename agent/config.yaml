@@ -17,14 +17,18 @@
 
 max_steps: 40          # 父 agent 单 turn 工具轮次上限
 max_turns: 50          # 会话 turn 上限
+plan_step_max_steps: 10  # plan 模式 LLM 逐步执行(v14): 单个结果步骤的 agent 工具轮次上限
 
 # ---- subagent 工具轮次上限 ----
+# (v15) 按角色收紧:30 对所有角色都过宽,arxiv 反复拿相同 query 重搜、ingest
+# 反复重复入库都会打满它。重复调用现在由 tool_result_cache 去重兜底,但上限
+# 仍需匹配任务真实负载——creator 读多篇+落盘保留 30,其余收紧。
 subagents:
   arxiv:
-    max_steps: 30       # 检索/读摘要,单任务窄工具面
+    max_steps: 8        # 检索/读摘要,单任务窄工具面
   ingest:
-    max_steps: 30       # 下载/入库,单动作
+    max_steps: 6        # 下载/入库,单动作
   creator:
-    max_steps: 30      # 章节写作: 先读多篇论文再落盘(5 轮会中途打满,见 TROUBLESHOOTING 写作链路)
+    max_steps: 30       # 章节写作: 先读多篇论文再落盘(5 轮会中途打满,见 TROUBLESHOOTING 写作链路)
   coder:
-    max_steps: 30       # 单任务实验/编码
+    max_steps: 15       # 单任务实验/编码

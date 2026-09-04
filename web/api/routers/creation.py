@@ -21,7 +21,6 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from agent.domains.creation import (
-    PROJECT_ROOT,
     _doc_dir,
     _load_doc,
     _main_md_path,
@@ -29,6 +28,7 @@ from agent.domains.creation import (
     doc_set_outline,
     doc_write_section,
     doc_export_docx,
+    get_writing_dir,
 )
 
 router = APIRouter(prefix="/api/creation", tags=["creation"])
@@ -127,7 +127,8 @@ async def export_docx(doc_id: str):
             404 if result.get("error_type") == "param_error" else 500,
             result.get("error", "export failed"),
         )
-    path = PROJECT_ROOT / result["data"]["export_path"]
+    # 写作文档根动态（项目路径内 writing/），导出相对路径基于它解析
+    path = get_writing_dir() / result["data"]["export_path"]
     if not path.exists():
         raise HTTPException(404, "exported file not found")
     return FileResponse(path, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",

@@ -1,28 +1,31 @@
 """
-plan.py — Plan-and-Execute (Phase 7).
+plan.py — Plan-and-Execute (Phase 7 / v14 LLM 逐步执行).
 
 decide_mode: pure heuristic — "react" (simple query, zero regression) vs
-    "plan" (multi-paper / comparison / multi-sub-question).
-plan_node: LLM structured output → ordered PlanStep list.
-executor_node: no-LLM topological executor; runs independent steps in
-    parallel via asyncio.gather, dependent steps in order.
+    "plan" (multi-paper / comparison / multi-sub-question). 客户端可经
+    state.requested_mode 显式覆盖。
+plan_node: LLM structured output → ordered outcome steps (paper 域无 target).
+executor_node: topological executor — 步骤顺序执行（无 asyncio.gather）：
+    auto 步骤 → _run_step_agent（LLM 逐步执行，动态多次调工具）；
+    tool / subagent 步骤 → 确定性 _run_step。
 
-target semantics (resolved against get_cached_tools()):
+target semantics:
+  - "auto" (paper 域默认) → LLM 逐步执行，模型动态选工具多次调用
   - "tool" → a DIRECT parent tool (search_papers / fetch_content / list_dir /
-    read_file / write_file / check_paper / check_task_status). All LOCAL work —
-    filesystem & library reads live here, never in a subagent.
-  - a subagent name (arxiv / ingest) → call the matching subagent tool (Phase 8).
+    read_file / write_file / check_paper / check_task_status). All LOCAL work.
+  - a subagent name (arxiv / ingest / creator / coder) → subagent 工具 (Phase 8 / v10).
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
+import os
 import re
 import time
+import uuid
 from typing import Literal
 
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel, Field
 
 from .prompts import PLAN_SYSTEM
@@ -46,18 +49,25 @@ def _last_user_text(state: dict) -> str:
     return ""
 
 
-def decide_mode(state: dict) -> str:
-    """Pick execution mode. "react" keeps the existing single-ReAct path.
+# 显式异步写作信号：用户要求「后台写/异步」→ 不强制走同步 plan，让 react 循环
+# 用 task_dispatch(role="creator", ...) 逐章派发（领导-部门制异步写作）。
+_ASYNC_CREATION_HINTS = (
+    "后台", "异步", "写好了叫我", "写完通知我", "先跑着",
+    "background", "asynchronously", "in the background",
+)
 
-    "plan" only on grounded signals:
-      - domain is creation/coding (领域 agent 的写作/实验工作流必须走 plan 通道)
-      - explicit comparison / multi-sub-question phrasing
-      - ≥2 distinct papers CONFIRMED by the resolution layer (focus_papers and
-        entity terms that actually matched a library paper — see resolve_node).
-    No blacklist heuristics: an entity only counts when resolution matched it
-    to a known paper, so 单论文单动作指令（入库/下载）never misroutes here.
-    """
-    if state.get("domain") in ("creation", "coding"):
+
+def _is_async_creation(q: str) -> bool:
+    ql = (q or "").lower()
+    return any(h in ql for h in _ASYNC_CREATION_HINTS)
+
+
+def _heuristic_mode(state: dict) -> str:
+    """The auto-detection heuristic (no override). Returns "react" or "plan"."""
+    domain = state.get("domain")
+    if domain in ("creation", "coding"):
+        if domain == "creation" and _is_async_creation(_last_user_text(state)):
+            return "react"
         return "plan"
     q = _last_user_text(state)
     if q:
@@ -76,16 +86,31 @@ def decide_mode(state: dict) -> str:
     return "react"
 
 
+def decide_mode(state: dict) -> str:
+    """Pick execution mode. "react" keeps the existing single-ReAct path.
+
+    优先级最高是客户端显式覆盖（state.requested_mode: "react"/"plan"），
+    之后才走 _heuristic_mode 自动判断；auto 时保持原行为。
+    无论哪种都 emit {"type":"mode", source:"user"|"auto"} 供前端标注实际模式。
+    """
+    forced = str(state.get("requested_mode") or "auto")
+    if forced in ("react", "plan"):
+        emit({"type": "mode", "mode": forced, "source": "user"})
+        return forced
+    mode = _heuristic_mode(state)
+    emit({"type": "mode", "mode": mode, "source": "auto"})
+    return mode
+
+
 # ---- structured plan output ----
 
 class PlanStep(BaseModel):
     id: str
-    description: str = Field(description="What this step answers (task-oriented)")
-    target: Literal["tool", "arxiv", "ingest", "creator", "coder"] = Field(
-        description='"tool" (a direct parent tool: search_papers / fetch_content / '
-        'list_dir / read_file / write_file / check_paper / check_task_status) | '
-        'arxiv (EXTERNAL arXiv only) | ingest (download/入库 write commands) | '
-        'creator (创作域写作 subagent) | coder (编码域实验/委托 subagent，v10 Phase C)'
+    description: str = Field(description="What this step must achieve/answer (outcome)")
+    target: Literal["tool", "arxiv", "ingest", "creator", "coder", "auto"] = Field(
+        default="auto",
+        description='"auto" (paper 域默认): LLM 逐步执行，模型动态多次调工具 | '
+        '"tool": 确定性单工具 | arxiv/ingest/creator/coder: subagent 边界 (v8/v10)',
     )
     args: dict = Field(default_factory=dict)
     depends_on: list[str] = Field(default_factory=list)
@@ -93,6 +118,21 @@ class PlanStep(BaseModel):
 
 class PlanResult(BaseModel):
     steps: list[PlanStep]
+
+
+def _emit_plan(plan: list[dict]) -> None:
+    """Push the plan event with per-step TODO status (all pending up front)."""
+    emit({
+        "type": "plan",
+        "steps": [
+            {
+                k: s.get(k)
+                for k in ("id", "description", "target", "depends_on")
+            }
+            | {"status": "pending"}
+            for s in plan
+        ],
+    })
 
 
 # ---- plan_node ----
@@ -166,8 +206,9 @@ def _parse_steps(raw_json: str) -> list[dict] | None:
     except Exception:
         return None
     steps = [s.model_dump() for s in result.steps]
-    # a plan with only dangling/invalid steps is no plan — degrade cleanly
-    valid = [s for s in steps if s.get("id") and s.get("target")]
+    # a plan with only dangling/invalid steps is no plan — degrade cleanly.
+    # v14: target 可缺省（pydantic 已填 "auto"），只要求有 id + 描述。
+    valid = [s for s in steps if s.get("id") and s.get("description")]
     return valid or None
 
 
@@ -237,13 +278,7 @@ async def plan_node(state: AgentState, config) -> dict:
         plan = _fallback_plan(state)
         log_event("plan_fallback", node="plan", level="warning", n_steps=len(plan))
 
-    emit({
-        "type": "plan",
-        "steps": [
-            {k: s.get(k) for k in ("id", "description", "target", "depends_on")}
-            for s in plan
-        ],
-    })
+    _emit_plan(plan)
 
     return {
         "mode": "plan",
@@ -269,13 +304,7 @@ async def _coding_plan(model, query: str, entities: str, hints: str) -> dict:
     if not plan:
         log_event("coding_plan_fallback", node="plan", level="warning")
 
-    emit({
-        "type": "plan",
-        "steps": [
-            {k: s.get(k) for k in ("id", "description", "target", "depends_on")}
-            for s in plan
-        ],
-    })
+    _emit_plan(plan)
     return {"mode": "plan", "plan": plan, "plan_progress": 0}
 
 
@@ -326,13 +355,7 @@ async def _creation_plan(model, state: AgentState, query: str,
         args["doc_id"] = doc_id
         step["args"] = args
 
-    emit({
-        "type": "plan",
-        "steps": [
-            {k: s.get(k) for k in ("id", "description", "target", "depends_on")}
-            for s in plan
-        ],
-    })
+    _emit_plan(plan)
 
     return {
         "mode": "plan",
@@ -396,7 +419,8 @@ async def _run_step(step: dict, state: dict, config) -> dict:
     Looks up the target (subagent name or "tool") in get_cached_tools().
     Structured degradation: unknown target / missing tool → ok=False, never raises.
     Emits tool_start/tool_end (reusing the react-mode SSE shape) so the client
-    renders each plan step as a collapsible card.
+    renders each plan step as a collapsible card, plus plan_step lifecycle
+    events (running → done/failed) that drive the plan TODO checklist.
     """
     step_id = step.get("id", "")
     target = step.get("target", "tool")
@@ -404,7 +428,11 @@ async def _run_step(step: dict, state: dict, config) -> dict:
     start = time.monotonic()
     is_subagent = False
 
+    def _plan_end(status: str) -> None:
+        emit({"type": "plan_step", "id": step_id, "status": status})
+
     def _end(name: str, status: str, result: str) -> None:
+        _plan_end("done" if status == "success" else "failed")
         emit({
             "type": "tool_end", "id": step_id, "name": name,
             "status": status, "result": str(result)[:4000],
@@ -434,6 +462,10 @@ async def _run_step(step: dict, state: dict, config) -> dict:
                 "error": f"unknown target/tool: {target}",
             }
 
+        # TODO 列表驱动：真实执行前标 running（重试会重复 emit，前端幂等覆盖）
+        emit({"type": "plan_step", "id": step_id, "status": "running",
+              "name": name, "description": step.get("description", "")})
+
         if is_subagent:
             # subagent 的 as_tool._call 自己 emit 边界 + 叶子工具事件；
             # 这里只 await 拿结果，避免重复卡片。config 透传: subgraph 作为子
@@ -441,9 +473,11 @@ async def _run_step(step: dict, state: dict, config) -> dict:
             out = await tool.ainvoke(call_args, config=config)
             if target == "creator":
                 ok, output, err = await _verify_creator_step(step, out)
+                _plan_end("done" if ok else "failed")
                 return {
                     "step_id": step_id, "ok": ok, "output": output, "error": err,
                 }
+            _plan_end("done")
             return {
                 "step_id": step_id, "ok": True, "output": str(out),
             }
@@ -468,8 +502,11 @@ async def _run_step(step: dict, state: dict, config) -> dict:
         }
     except Exception as exc:
         # subagent 失败时 _call 已用 run_id emit tool_end(error)，这里不再重复。
+        # 但 plan_step 终态仍要发出——否则 TODO 列表卡在 running。
         if not is_subagent:
             _end(target, "error", f"{type(exc).__name__}: {exc}")
+        else:
+            _plan_end("failed")
         return {
             "step_id": step_id, "ok": False, "output": "",
             "error": f"{type(exc).__name__}: {exc}",
@@ -494,6 +531,10 @@ async def executor_node(state: AgentState, config) -> dict:
     # 模式,一次显式 "必须落盘" 提示通常足以修正,避免整章静默丢失。
     retried: set[str] = set()
     remaining = [s for s in plan if s.get("id") not in done]
+    total = len(plan)
+
+    def _emit_progress() -> None:
+        emit({"type": "plan_progress", "done": len(done), "total": total})
 
     while remaining:
         ready = [
@@ -506,35 +547,42 @@ async def executor_node(state: AgentState, config) -> dict:
 
         # 1) 同一批里的 check_paper 步骤先执行：它的确定性结论是后续入库/下载步骤
         #    的守卫依据（plan-and-execute 本身无分支，靠这里做分支）。
-        check_steps = [s for s in ready if _is_check_step(s, by_id)]
-        if check_steps:
-            outs = await asyncio.gather(*[_run_step(s, state, config) for s in check_steps])
-            for s, out in zip(check_steps, outs):
-                results[s["id"]] = out
-                done.add(s["id"])
+        for s in ready:
+            if not _is_check_step(s, by_id):
+                continue
+            out = await _run_step(s, state, config)
+            results[s["id"]] = out
+            done.add(s["id"])
+        _emit_progress()
 
-        # 2) 其余步骤：被 check_paper 结论守卫命中的下载/入库步骤 → 跳过（不调用）；
-        #    其余照常执行。
-        run: list[dict] = []
+        # 2) 其余步骤顺序执行（v14 去掉 asyncio.gather：LLM 逐步执行并发会交错
+        #    工具事件、并发烧 LLM，顺序符合 Claude 逐步骤执行）。守卫命中的跳过。
         for s in ready:
             if s["id"] in done:
                 continue
             note = _ingest_guard(s, results, by_id)
             if note is not None:
+                emit({"type": "plan_step", "id": s["id"], "status": "skipped",
+                      "name": "guard", "description": s.get("description", ""),
+                      "output": note})
                 results[s["id"]] = {
                     "step_id": s["id"], "ok": True,
                     "output": note, "error": "", "skipped": True,
                 }
                 done.add(s["id"])
+                continue
+
+            if _is_agent_step(s):
+                # LLM 逐步执行：步骤=结果单元，模型动态多次调工具
+                out = await _run_step_agent(s, state, config,
+                                            _ok_outputs(results))
             else:
-                run.append(s)
-        outs = await asyncio.gather(*[_run_step(s, state, config) for s in run])
-        for i, s in enumerate(run):
-            out = outs[i]
+                out = await _run_step(s, state, config)
+
             # (P4) 直接工具步骤失败 → 确定性重试一次: transient 原参数; param_error
             # 且错误带 available_papers/sections → 修正参数。对比 react 模式的
             # LLM 错误恢复，这里不用 LLM,只做确定性的参数修正/重试(见
-            # _retry_args_from_error)。
+            # _retry_args_from_error)。auto 步骤内部已有 LLM 重试循环，不在此再重试。
             if (
                 out.get("ok") is False
                 and s.get("target") == "tool"
@@ -576,12 +624,227 @@ async def executor_node(state: AgentState, config) -> dict:
                 out = await _run_step(retry, state, config)
             results[s["id"]] = out
             done.add(s["id"])
+        _emit_progress()
         remaining = [s for s in remaining if s.get("id") not in done]
 
     return {
         "subagent_results": list(results.values()),
         "plan_progress": len(done),
+        # TODO 状态回填（也持久化进 checkpoint，synthesize/verify 消费）
+        "plan": _statused_plan(plan, results),
+        "plan_done": len(done),
+        "plan_total": total,
     }
+
+
+def _is_agent_step(step: dict) -> bool:
+    """LLM 逐步执行步骤：target 缺省/auto = paper 域结果单元。"""
+    return (step.get("target") or "auto") == "auto"
+
+
+def _ok_outputs(results: dict) -> dict:
+    """已完成（ok 且非 skipped）步骤产出，供后步复用（depends_on 语义）。"""
+    return {
+        sid: (r.get("output") or "")
+        for sid, r in results.items()
+        if r.get("ok") and not r.get("skipped")
+    }
+
+
+# ---- LLM 逐步执行（v14）：一个结果步骤 = agent 循环，动态多次调工具 ----
+
+
+def _step_budget() -> int:
+    """单步骤 agent 循环的工具调用轮次上限：env > agent/config.yaml > 默认 10。"""
+    try:
+        from .config import get_limits
+        v = get_limits().plan_step_max_steps
+        return v if v and v > 0 else 10
+    except Exception:
+        return 10
+
+
+async def _run_step_agent(step: dict, state: dict, config,
+                          prior_outputs: dict | None = None) -> dict:
+    """Execute one outcome step via a bounded LLM agent loop.
+
+    步骤 = 结果单元：per-step 纯净对话（中间产物不外泄到父线程），模型动态选择
+    并多次调用工具。每次工具调用 emit tool_start/tool_end（父层工具卡片），
+    文本产出 = 步骤答案，成为 synthesize 证据。never raise。
+    """
+    from .nodes import _get_bound_model, _stream_llm
+    from .tool_contract import parse_tool_result, truncate_tool_result
+    from .tools import get_cached_tools
+    from .prompts import STEP_EXEC_SYSTEM
+
+    step_id = step.get("id", "")
+    description = (step.get("description") or "").strip() or "(步骤)"
+
+    def _ps(status: str, output: str = "") -> None:
+        emit({"type": "plan_step", "id": step_id, "status": status,
+              **({"output": output} if output else {})})
+
+    _ps("running")
+
+    # 上下文：resolved 可信论文名（别重搜）+ 前序步骤产出（depends_on 引用）
+    resolved = state.get("resolved", {}) or {}
+    papers = resolved.get("papers", []) if isinstance(resolved, dict) else []
+    hints = "\n".join(
+        f'- "{p.get("query", "")}" → "{p.get("match", "")}" ({p.get("level", "NONE")})'
+        for p in papers if p.get("match")
+    )
+    prior = ""
+    if prior_outputs:
+        lines = []
+        for sid, txt in prior_outputs.items():
+            t = str(txt).strip()
+            if t:
+                lines.append(f"- {sid}: {t[:400]}")
+        if lines:
+            prior = "\n" + "\n".join(lines[:8])
+
+    system = STEP_EXEC_SYSTEM
+    if hints:
+        system += f"\n\n## Resolved paper references (trust these names)\n{hints}"
+    if prior:
+        system += f"\n\n## Previous steps completed\n{prior}"
+    msgs: list = [SystemMessage(content=system), HumanMessage(content=description)]
+
+    tools = {t.name: t for t in get_cached_tools()}
+    # SUBAGENT_NAMES: subagent 工具(arxiv/ingest/…)的卡片由 as_tool._call 边界
+    # 唯一发出,这里不再手动 emit,避免与边界卡重复(与 _run_step 的做法一致)。
+    from .subagents import SUBAGENT_NAMES
+    model = _get_bound_model(config)
+    budget = _step_budget()
+    last_text = ""
+    consecutive_down = 0
+    error = ""
+    # 本步骤内相同(工具,参数)去重:命中直接复用上次结果,不再重复执行副作用。
+    result_cache: dict[str, str] = {}
+
+    def _tool_key(name: str, args: dict) -> str:
+        try:
+            args_sorted = json.dumps(args, sort_keys=True, ensure_ascii=False)
+        except Exception:
+            args_sorted = repr(args)
+        return f"{name}|{args_sorted}"
+
+    try:
+        for _ in range(budget):
+            resp = await _stream_llm(model, msgs, emit_tokens=False)
+            calls = getattr(resp, "tool_calls", None) or []
+            text = str(getattr(resp, "content", "") or "").strip()
+            if text:
+                last_text = text
+            if not calls:
+                break  # 无工具调用 → 步骤完成
+
+            for tc in calls:
+                name = tc.get("name", "")
+                targs = tc.get("args") or {}
+                # 卡片 id 唯一:优先模型 tool_call id;缺失时生成随机 id,杜绝
+                # 沿用 tc.name 兜底导致同名工具多次调用 id 碰撞(前端第二张卡永远
+                # 转圈、React 同 key)。
+                card_id = tc.get("id", "") or f"{name}-{uuid.uuid4().hex[:6]}"
+                # ToolMessage.tool_call_id 维持原语义(仅作为字符串标签)。
+                tc_id = tc.get("id", "") or name
+                tool = tools.get(name)
+                begin = time.monotonic()
+
+                # 重复调用去重:命中缓存直接复用(不重新 invoke)。错误信封不
+                # 缓存,给 LLM 留下 error_type 恢复(重试/换工具)的路径。
+                ckey = _tool_key(name, targs)
+                if ckey in result_cache:
+                    content = result_cache[ckey]
+                    status = "success"
+                    if name not in SUBAGENT_NAMES:
+                        emit({"type": "tool_start", "id": card_id, "name": name,
+                              "args": targs})
+                        emit({
+                            "type": "tool_end", "id": card_id, "name": name,
+                            "status": status,
+                            "result": f"[重复调用,复用上次结果]\n{str(content)[:4000]}",
+                            "execution_time": round(time.monotonic() - begin, 2),
+                        })
+                    msgs.append(ToolMessage(
+                        content=truncate_tool_result(
+                            f"[重复调用,复用上次结果]\n{content}", 8000),
+                        tool_call_id=tc_id, name=name,
+                    ))
+                    continue
+
+                if tool is None:
+                    content = (f'{{"ok": false, "error_type": "unknown", '
+                               f'"error": "unknown tool: {name}"}}')
+                    status = "error"
+                else:
+                    if name not in SUBAGENT_NAMES:
+                        emit({"type": "tool_start", "id": card_id, "name": name,
+                              "args": targs})
+                    try:
+                        content = str(await tool.ainvoke(targs, config=config))
+                    except Exception as exc:
+                        content = (f'{{"ok": false, "error_type": "tool_crash", '
+                                   f'"error": "{type(exc).__name__}: {exc}"}}')
+                    parsed = parse_tool_result(content)
+                    status = "error" if (parsed.is_envelope and not parsed.ok) else "success"
+                    if parsed.is_envelope and not parsed.ok:
+                        error = parsed.error or ""
+                        if (parsed.error_type or "") == "backend_down":
+                            consecutive_down += 1
+                        else:
+                            consecutive_down = 0
+                    else:
+                        consecutive_down = 0
+                        result_cache[ckey] = content
+                if name not in SUBAGENT_NAMES:
+                    emit({
+                        "type": "tool_end", "id": card_id, "name": name,
+                        "status": status, "result": str(content)[:4000],
+                        "execution_time": round(time.monotonic() - begin, 2),
+                    })
+                msgs.append(ToolMessage(
+                    content=truncate_tool_result(content, 8000),
+                    tool_call_id=tc_id, name=name,
+                ))
+
+            if consecutive_down >= 2:
+                if not last_text:
+                    last_text = ("本地知识库后端不可达，已停止工具调用，"
+                                 "本步骤无法完成真实检索。")
+                break
+    except Exception as exc:
+        log_event("step_agent_llm_failed", node="executor", level="warning",
+                  step_id=step_id, error=f"{type(exc).__name__}: {exc}")
+        error = f"{type(exc).__name__}: {exc}"
+
+    ok = bool(last_text.strip())
+    _ps("done" if ok else "failed")
+    return {
+        "step_id": step_id,
+        "ok": ok,
+        "output": last_text if ok else "",
+        "error": error if not ok else "",
+    }
+
+
+def _statused_plan(plan: list[dict], results: dict) -> list[dict]:
+    """回填每步 status。先全部 pending，再按 subagent_results 覆盖：
+    ok+skipped → skipped / ok → done / !ok → failed；没出现在 results 的
+    （cycle/悬空依赖）保持 pending。
+    """
+    out: list[dict] = []
+    for s in plan:
+        step = dict(s)
+        r = results.get(s.get("id"))
+        if r is None:
+            step["status"] = "pending"
+        elif r.get("ok"):
+            step["status"] = "skipped" if r.get("skipped") else "done"
+        else:
+            step["status"] = "failed"
+        out.append(step)
+    return out
 
 
 def _is_check_step(step: dict, by_id: dict) -> bool:
@@ -694,3 +957,136 @@ def _ingest_guard(step: dict, results: dict, by_id: dict) -> str | None:
             return (f"[guard] check_paper({term}) 返回 downloaded_not_indexed —— PDF 已在本地，"
                     f"跳过下载；如需入库直接用 action=ingest 处理本地 PDF。")
     return None
+
+
+# ---- verify — 计划完成验证（报告式，不自动修复）----
+
+_VERIFY_SYSTEM = """你是科研问答流程的验收员。判断「已执行的步骤产出」能否回答用户的原始问题。
+
+Output ONLY a JSON object, no preamble, no markdown fences:
+{"status":"satisfied|partial|failed|no_evidence","reason":"一句话","missing":["缺口1","缺口2"]}
+
+- satisfied: 现有产出已充分回答用户问题
+- partial: 能部分回答，仍有明确缺口
+- failed: 关键产出缺失/根本性错误，不足以回答
+- no_evidence: 没有任何可用执行产出
+missing 最多 3 条，reason 不超过 40 字。"""
+
+_VERIFY_EVIDENCE_MAX = int(os.environ.get("AGENT_VERIFY_EVIDENCE_MAX", "8000"))
+
+
+def _verify_summary(plan: list[dict], results: list[dict]) -> dict:
+    """确定性统计（零成本）：done/failed/pending 计数 + outstanding 列表。
+
+    failed = !ok；pending = 未出现在 results（cycle/悬空依赖未执行）；
+    skipped（ok + skipped）计入 done 但不进 outstanding（守卫生效不是失败）。
+    """
+    by_id = {r.get("step_id"): r for r in results}
+    failed = [r for r in results if not r.get("ok")]
+    pending = [s for s in plan if s.get("id") not in by_id]
+    desc = {s.get("id"): s.get("description", "") for s in plan}
+    outstanding: list[dict] = []
+    for r in failed:
+        outstanding.append({
+            "id": r.get("step_id", ""),
+            "description": desc.get(r.get("step_id", ""), ""),
+            "reason": (r.get("error") or "执行失败")[:200],
+        })
+    for s in pending:
+        outstanding.append({
+            "id": s.get("id", ""),
+            "description": s.get("description", ""),
+            "reason": "步骤未执行（依赖不满足或计划空洞）",
+        })
+    return {
+        "done": len([r for r in results if r.get("ok")]),
+        "total": len(plan),
+        "outstanding": outstanding,
+    }
+
+
+async def _verify_goal(model, query: str, plan: list[dict],
+                       results: list[dict]) -> str | None:
+    """LLM 目标满足度检查 → status；LLM 失败/不可解析 → None（调用方降级）。"""
+    desc = {s.get("id"): s.get("description", "") for s in plan}
+    parts: list[str] = []
+    for r in results:
+        label = desc.get(r.get("step_id"), "")
+        if r.get("ok"):
+            out = (r.get("output") or "").strip()
+            if out and not r.get("skipped"):
+                parts.append(f"## {label}\n{out[:1500]}")
+        else:
+            parts.append(f"## {label}\n(步骤失败: {(r.get('error') or '')[:200]})")
+    evidence = "\n\n".join(parts) or "(无步骤产出)"
+    from .tool_contract import truncate_tool_result
+    evidence = truncate_tool_result(evidence, _VERIFY_EVIDENCE_MAX)
+
+    steps = "\n".join(f"- {s.get('id')}: {s.get('description', '')}" for s in plan)
+    prompt = (
+        f"## User Question\n{query}\n\n"
+        f"## Plan Steps\n{steps}\n\n"
+        f"## Step Outputs\n{evidence}"
+    )
+    response = await model.ainvoke([
+        SystemMessage(content=_VERIFY_SYSTEM),
+        HumanMessage(content=prompt),
+    ])
+    text = getattr(response, "content", "")
+    raw = _extract_json_text(text) if isinstance(text, str) else None
+    if not raw:
+        return None
+    try:
+        status = str(json.loads(raw).get("status", ""))
+        if status in ("satisfied", "partial", "failed", "no_evidence"):
+            return status
+    except Exception:
+        pass
+    return None
+
+
+@timed("verify")
+async def verify_node(state: AgentState, config) -> dict:
+    """计划完成验证（报告式）。确定性统计 + LLM 目标满足度检查。
+
+    状态合成（不自动修复，只报告）：
+      - 空 plan → no_evidence
+      - 有 failed/pending 步骤 → partial（LLM 判 failed 才升格 failed；LLM 说
+        satisfied 也钳制回 partial，绝不掩盖失败步骤）
+      - 全部完成 → 以 LLM 结论为准（satisfied/partial）
+    creation 域跳过 LLM（写作终态由 doc_progress 报告，verify 只做统计）。
+    """
+    plan = state.get("plan", [])
+    results = state.get("subagent_results", [])
+    summary = _verify_summary(plan, results)
+    has_fail = bool(summary["outstanding"])
+
+    status = "no_evidence"
+    if len(plan) > 0:
+        status = "partial" if has_fail else "satisfied"
+
+    if state.get("domain") != "creation" and len(plan) > 0:
+        from .nodes import _get_model  # lazy: avoid import cycle
+        try:
+            model = _get_model(config)
+            llm_status = await _verify_goal(
+                model, _last_user_text(state) or "(none)", plan, results,
+            )
+        except Exception as exc:
+            log_event("verify_llm_failed", node="verify", level="warning",
+                      error=f"{type(exc).__name__}: {exc}")
+            llm_status = None
+        if llm_status:
+            if has_fail:
+                status = "failed" if llm_status == "failed" else "partial"
+            else:
+                status = llm_status
+
+    emit({
+        "type": "plan_verify",
+        "status": status,
+        "done": summary["done"],
+        "total": summary["total"],
+        "outstanding": summary["outstanding"],
+    })
+    return {"verification": {**summary, "status": status}}

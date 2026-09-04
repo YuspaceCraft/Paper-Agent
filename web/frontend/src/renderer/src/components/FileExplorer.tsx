@@ -7,7 +7,7 @@
  */
 
 import { type FC, useEffect, useState, useCallback } from 'react';
-import { api, whenBackendReady } from '../api';
+import { api, whenBackendReady, type WorkspaceRoot } from '../api';
 import { Markdown } from './Markdown';
 
 interface Entry {
@@ -18,6 +18,8 @@ interface Entry {
 
 interface Props {
   open: boolean;
+  /** 基准根：project=文献问答+写作（项目路径），experiments=实验根。 */
+  root?: WorkspaceRoot;
 }
 
 const join = (a: string, b: string) => (a === '.' || a === '' ? b : `${a}/${b}`);
@@ -41,17 +43,24 @@ const panelStyle: React.CSSProperties = {
   overflow: 'hidden',
 };
 
-export const FileExplorer: FC<Props> = ({ open }) => {
+export const FileExplorer: FC<Props> = ({ open, root = 'project' }) => {
   const [cwd, setCwd] = useState('.');
   const [entries, setEntries] = useState<Entry[]>([]);
   const [selected, setSelected] = useState<{ path: string; content: string; is_binary: boolean } | null>(null);
   const [error, setError] = useState('');
 
   const loadDir = useCallback((path: string) => {
-    api.listWorkspace(path)
+    api.listWorkspace(path, root)
       .then(r => { setEntries(r.data.entries); setError(''); })
       .catch(e => setError(String(e)));
-  }, []);
+  }, [root]);
+
+  // 根切换（chat ↔ experiment）→ 复位到根目录并清空选中
+  useEffect(() => {
+    setCwd('.');
+    setSelected(null);
+    setEntries([]);
+  }, [root]);
 
   // Gate the initial load on backend readiness (Electron): mounting in the
   // first second fires before uvicorn is up, and a one-shot fetch would leave
@@ -61,13 +70,13 @@ export const FileExplorer: FC<Props> = ({ open }) => {
     let alive = true;
     whenBackendReady().then(() => { if (alive) loadDir(cwd); });
     return () => { alive = false; };
-  }, [cwd, open, loadDir]);
+  }, [cwd, open, root, loadDir]);
 
   const openFile = useCallback((path: string) => {
-    api.readWorkspaceFile(path)
+    api.readWorkspaceFile(path, root)
       .then(r => setSelected({ path, content: r.data.content, is_binary: r.data.is_binary }))
       .catch(e => setError(String(e)));
-  }, []);
+  }, [root]);
 
   if (!open) return null;
 
@@ -87,6 +96,12 @@ export const FileExplorer: FC<Props> = ({ open }) => {
           style={toolBtn(up === null)}
         >↑</button>
         <button onClick={() => { loadDir(cwd); }} title="刷新" style={toolBtn(false)}>↻</button>
+        <span style={{
+          padding: '1px 6px', borderRadius: 8, fontSize: 11, flexShrink: 0,
+          background: 'var(--color-inset)', color: 'var(--color-text-secondary)',
+        }}>
+          {root === 'experiments' ? '🧪 实验' : '📚 文献'}
+        </span>
         <span style={{
           flex: 1, fontSize: 12, color: 'var(--color-text-secondary)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',

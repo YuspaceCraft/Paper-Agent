@@ -23,6 +23,12 @@ build/
 
 # Agent checkpoint database (LangGraph SqliteSaver)
 checkpoints.db*
+# 领导-部门制任务舱元数据（AsyncSqliteStore）
+task_store.db*
+
+# Runtime workspace config & generated docs (machine-local)
+web/workspace/settings.json
+web/workspace/docs/
 
 # Model weights / local vector stores (large binaries, not for VCS)
 Qwen3_model/

@@ -67,6 +67,7 @@ async def ensure_tools(mcp_config: str | Path | None = None,
         from .providers.generic_provider import GenericProvider
         from .providers.mcp_provider import MCPProvider, load_mcp_config
         from .providers.skill_provider import SkillProvider
+        from .providers.task_provider import TaskProvider
         from .domains.creation import CreationProvider
         from .domains.coding import CodingProvider
 
@@ -74,6 +75,7 @@ async def ensure_tools(mcp_config: str | Path | None = None,
             BuiltinProvider(),
             CreationProvider(),   # 创作域 doc 工具（creator subagent 可见）
             CodingProvider(),     # 编码域实验/git/delegate/study 工具（coder subagent 可见）
+            TaskProvider(),       # 领导-部门制监督工具（task_dispatch/progress/collect/resume/cancel/list）
             GenericProvider(),
             MCPProvider(load_mcp_config(mcp_config)),
             SkillProvider(skills_dir),
@@ -104,7 +106,10 @@ async def ensure_tools(mcp_config: str | Path | None = None,
         # 都必须由父 agent 直接调用，故显式列入。
         PARENT_NAMES = {"read_file", "list_dir", "write_file", "check_paper",
                         "check_task_status", "search_papers", "fetch_content",
-                        "skill__list", "skill__load"}
+                        "skill__list", "skill__load",
+                        # 领导-部门制监督工具（父 agent 全量）
+                        "task_dispatch", "task_progress", "task_collect",
+                        "task_resume", "task_cancel", "task_list"}
         parent_tools = [t for t in _BASE_TOOLS if t.name in PARENT_NAMES]
         parent_tools += subagent_tools
 

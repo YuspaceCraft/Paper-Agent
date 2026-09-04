@@ -116,7 +116,9 @@ PDF
 | `eval_output/all_rag_chunks.json` | 同上 | 全部论文合流 chunk（索引后重建） |
 | `eval_output/paper_registry.json` | web/api/main::_warmup_redis | Redis 冷备份，启动时恢复 registry/dedup |
 | `indexer/config.yaml` | indexer + retrieval | 向量库/embedding 后端选择（qdrant vs chroma / api vs local） |
-| `checkpoints.db` | agent/graph | LangGraph 会话跨重启持久化 |
+| `checkpoints.db` | agent/graph + agent/supervisor | LangGraph 会话跨重启持久化；子 agent 舱以 thread_id=task_id 落同一库（状态栈） |
+| `task_store.db` | agent/supervisor + web/api/routers/tasks | 子 agent 任务舱元数据（AsyncSqliteStore）跨重启持久化 |
+| `web/workspace/settings.json` | agent/workspace_config + web/api/routers/settings | **可配置工作区根（唯一来源）**：`project_path`（文献问答+写作根，未设置=代码根，写作存 `web/workspace/docs`；设置后写作存 `{project_path}/writing`）、`experiments_path`（实验根，独立默认 `web/workspace/experiments`）；研究知识库根跟随实验根 `parent/studies` |
 
 ## 关键符号速查（动手前先查这里，省一轮全局搜索）
 
@@ -171,12 +173,15 @@ PDF
 |------|------|------|
 | `build_graph()` / `get_agent()` / `run(query, thread_id=)` | `agent/graph.py` | 状态机构建与运行；同 thread_id 保持多轮会话 |
 | `understand_node` `memory_node` `resolve_node` `synthesize_node` `chat_node` `clarify_node` + `route_intent` | `agent/nodes.py` `agent/resolution.py` | 各节点实现 |
-| `decide_mode` / `plan_node` / `executor_node` | `agent/plan.py` | plan-and-execute（多论文/对比类走 plan，单条走 react） |
+| `decide_mode` / `plan_node` / `executor_node` / `_run_step_agent` / `verify_node` | `agent/plan.py` | plan-and-execute：客户端可经 `state.requested_mode`（`AgentChatRequest.mode`）显式覆盖模式（auto/react/plan）；paper 域步骤=结果单元（无 target），`executor_node` 顺序执行，`_run_step_agent` 是 LLM 逐步执行（一步可多次调工具，预算 `plan_step_max_steps`）；`verify_node` 报表式验证 `verification`（synthesize 消费） |
 | `build_search_subgraph()` | `agent/search_loop.py` | agent↔tools ReAct 循环（step 上限 `state.max_steps` 默认 30，`AGENT_MAX_STEPS`/兼容旧名 `AGENT_MAX_ITERATIONS`；turn 上限 `max_turns` 默认 50） |
 | `ensure_tools()` / `get_cached_tools()` | `agent/tools.py` | 工具装配（builtin + generic + MCP） |
 | `load_mcp_config()` / `MCPProvider` | `agent/providers/mcp_provider.py` | 从 `.mcp.json` 加载外部 MCP 工具 |
 | `load_limits()` / `get_limits()` | `agent/config.py` + `agent/config.yaml` | **执行约束统一配置** — 父 agent `max_steps`/`max_turns` + 各 subagent `max_steps`（`subagents.<name>`）。优先级 env `AGENT_MAX_STEPS`/`AGENT_MAX_TURNS` > yaml > 代码默认；`state.py` 默认值与 `build_subagents` 都从它取值 |
-| `AgentState` | `agent/state.py` | 图状态 schema |
+| `AgentState` | `agent/state.py` | 图状态 schema（含 `active_tasks` 会话任务句柄） |
+| `dispatch`/`progress`/`collect`/`resume`/`cancel`/`list_tasks` | `agent/supervisor.py` | **领导-部门制派发器** — 长任务派发到隔离子 agent（thread_id=task_id 状态栈）+ 监督/干预/验收；`task_store.db` 元数据；`graph.get_agent` 启动时 `init_supervisor(checkpointer)` |
+| `find_tasks`/`list_tasks` + `task_dispatch`/`task_progress`/`task_collect`/`task_resume`/`task_cancel`/`task_list` | `agent/task_registry.py` + `agent/providers/task_provider.py` | 统一任务监督视图（舱+实验+写作+Redis 合并） + 父 agent 监督工具面 |
+| `get_project_root`/`get_experiments_path`/`get_study_root`/`get_docs_dir`/`set_paths`/`set_override` | `agent/workspace_config.py` | **可配置工作区根（唯一来源）** — settings.json 持久化；写作目录逻辑：project_path 未设置→`web/workspace/docs`，设置后→`{project_path}/writing`；实验根/研究根各自独立 |
 
 ### retrieval_orchestrator（离线评估）
 
@@ -304,7 +309,10 @@ C:/Users/30811/miniconda3/envs/demo/python.exe -m web.cli reset --force
 | `/api/agent/chat/stream` | POST | Agent 对话（SSE 流式） |
 | `/api/agent/health` | GET | Agent 状态 |
 | `/api/reader/...` | GET | 论文阅读器 — chunk context / sections / abstract / papers 检索（全列表见 routers/reader.py docstring） |
-| `/api/workspace/list`、`/api/workspace/read` | GET | workspace 文件浏览/读取 |
+| `/api/workspace/list`、`/api/workspace/read` | GET | workspace 文件浏览/读取（`?root=project\|experiments` 切换基准根；project=文献问答+写作根，experiments=实验根） |
+| `/api/workspace/browse` | GET | 本地目录只读浏览（路径选择器用，空 path→盘符列表） |
+| `/api/settings` | GET/PUT | 可配置路径：`{project_path?, experiments_path?}`（项目路径/实验根，PUT 传空串清除） |
+| `/api/tasks`、`/api/tasks/search` | GET | 统一任务监督视图（派发子 agent 舱 + 实验 + 写作文档 + Redis 后台任务，v12） |
 
 ## 离线检索评估
 

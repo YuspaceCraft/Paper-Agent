@@ -8,14 +8,16 @@
 import { type FC, useCallback, useRef } from 'react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
-import { streamChat } from '../api';
-import type { Message, PlanStep, ToolStep } from '../state';
+import { streamChat, type PlanVerdict } from '../api';
+import type { AgentMode, Message, PlanStep, PlanVerdictData, ToolStep } from '../state';
 import { saveMessages } from '../state';
 
 interface Props {
   threadId: string;
   messages: Message[];
   isStreaming: boolean;
+  mode: AgentMode;
+  onModeChange: (m: AgentMode) => void;
   onAddMessage: (msg: Message) => void;
   onAppendToken: (msgId: string, token: string) => void;
   onFinishMessage: (msgId: string) => void;
@@ -23,6 +25,10 @@ interface Props {
   onToolStart: (msgId: string, step: ToolStep) => void;
   onToolEnd: (msgId: string, toolCallId: string, patch: Partial<ToolStep>, name?: string, threadId?: string) => void;
   onPlan: (msgId: string, plan: PlanStep[]) => void;
+  onPlanStep: (msgId: string, stepId: string, patch: Partial<PlanStep>) => void;
+  onPlanProgress: (msgId: string, done: number, total: number) => void;
+  onPlanVerify: (msgId: string, verdict: PlanVerdictData) => void;
+  onMode: (msgId: string, mode: 'react' | 'plan') => void;
   onSetStreaming: (v: boolean) => void;
 }
 
@@ -35,8 +41,9 @@ const containerStyle: React.CSSProperties = {
 };
 
 export const ChatView: FC<Props> = ({
-  threadId, messages, isStreaming,
-  onAddMessage, onAppendToken, onFinishMessage, onAbortMessage, onToolStart, onToolEnd, onPlan, onSetStreaming,
+  threadId, messages, isStreaming, mode, onModeChange,
+  onAddMessage, onAppendToken, onFinishMessage, onAbortMessage, onToolStart, onToolEnd,
+  onPlan, onPlanStep, onPlanProgress, onPlanVerify, onMode, onSetStreaming,
 }) => {
   const abortRef = useRef<AbortController | null>(null);
 
@@ -61,7 +68,7 @@ export const ChatView: FC<Props> = ({
     onAddMessage(sysMsg);
     onSetStreaming(true);
 
-    abortRef.current = streamChat(text, threadId, {
+    abortRef.current = streamChat(text, threadId, mode, {
       onToolStart(id, name, args, parentId, kind) {
         onToolStart(sysId, { id, name, args, parentId, kind, status: 'running' });
       },
@@ -72,8 +79,20 @@ export const ChatView: FC<Props> = ({
           executionTime,
         }, name, threadId);
       },
+      onMode(m, _source) {
+        onMode(sysId, m);
+      },
       onPlan(steps) {
         onPlan(sysId, steps);
+      },
+      onPlanStep(id, status, output) {
+        onPlanStep(sysId, id, { status, ...(output !== undefined ? { output } : {}) });
+      },
+      onPlanProgress(done, total) {
+        onPlanProgress(sysId, done, total);
+      },
+      onPlanVerify(v) {
+        onPlanVerify(sysId, v as PlanVerdictData);
       },
       onToken(content) {
         onAppendToken(sysId, content);
@@ -87,7 +106,7 @@ export const ChatView: FC<Props> = ({
         onAbortMessage(sysId);
       },
     });
-  }, [threadId, messages, onAddMessage, onAppendToken, onFinishMessage, onAbortMessage, onToolStart, onToolEnd, onPlan, onSetStreaming]);
+  }, [threadId, mode, messages, onAddMessage, onAppendToken, onFinishMessage, onAbortMessage, onToolStart, onToolEnd, onPlan, onPlanStep, onPlanProgress, onPlanVerify, onMode, onSetStreaming]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -100,7 +119,7 @@ export const ChatView: FC<Props> = ({
   return (
     <div style={containerStyle}>
       <MessageList messages={messages} onSuggestion={handleSend} />
-      <ChatInput isStreaming={isStreaming} onSend={handleSend} onStop={handleStop} />
+      <ChatInput isStreaming={isStreaming} mode={mode} onModeChange={onModeChange} onSend={handleSend} onStop={handleStop} />
     </div>
   );
 };

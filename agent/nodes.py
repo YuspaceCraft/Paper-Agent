@@ -34,7 +34,7 @@ from langchain_openai import ChatOpenAI
 from .state import AgentState, UnderstandResult
 from .prompts import (
     UNDERSTAND_SYSTEM, AGENT_SYSTEM, SYNTHESIZE_SYSTEM,
-    CHAT_SYSTEM, CLARIFY_SYSTEM,
+    CHAT_SYSTEM, CLARIFY_SYSTEM, TASK_SYSTEM,
 )
 from .tools import get_base_tools, get_cached_tools
 from .resolution import normalize_name as _normalize_name
@@ -110,15 +110,42 @@ def build_tools_node(tools):
         calls = getattr(msgs[-1], "tool_calls", None) or []
         if not calls:
             return {"messages": []}
+        # 去重缓存 (v15): 单轮内相同(工具,参数)只真正执行一次后的结果复用。
+        # subagent/父 react 循环共享本节点,所以两条路径都受益。
+        cache = state.get("tool_result_cache", {}) or {}
+        next_cache = dict(cache)
+
+        def _tool_key(name: str, args: dict) -> str:
+            try:
+                args_sorted = json.dumps(args, sort_keys=True, ensure_ascii=False)
+            except Exception:
+                args_sorted = repr(args)
+            return f"{name}|{args_sorted}"
 
         async def _run(tc: dict) -> ToolMessage:
             from .tool_contract import err as _err_contract
+            from .tool_contract import parse_tool_result
             from .tool_contract import truncate_tool_result
 
             name = tc.get("name", "")
             cid = tc.get("id", "") or tc.get("resource_id", "") or ""
             args = tc.get("args") or {}
             tool = tool_map.get(name)
+            key = _tool_key(name, args)
+
+            hit = next_cache.get(key)
+            if hit is not None:
+                # 重复调用 → 复用上次结果,不重新执行副作用;前缀提示让 LLM
+                # 知道命中缓存(避免它为一成不变的结果反复重试同一参数)。
+                count = (hit.get("count", 1) or 1) + 1
+                base = hit.get("content", "")
+                next_cache[key] = {"content": base, "count": count}
+                text = f"[重复调用 {count - 1} 次，结果与上次相同]\n{base}"
+                return ToolMessage(
+                    content=truncate_tool_result(text, _TOOL_RESULT_MAX),
+                    tool_call_id=cid, name=name,
+                )
+
             if tool is None:
                 content = _err_contract("unknown", f"unknown tool: {name}")
             else:
@@ -131,10 +158,15 @@ def build_tools_node(tools):
             # P6: 截断走 tool_contract —— envelope 截在 data 内部保持可解析，
             # 纯文本保持字符级 (旧实现直接切字符会把 JSON 切成半截整体作废)。
             text = truncate_tool_result(str(content), _TOOL_RESULT_MAX)
+            # 只缓存「成功」结果:错误信封让 LLM 据 error_type 恢复(重试/换工具),
+            # 把错误也缓存会锁死恢复路径不让它重试。
+            parsed = parse_tool_result(text)
+            if not (parsed.is_envelope and not parsed.ok):
+                next_cache[key] = {"content": text, "count": 1}
             return ToolMessage(content=text, tool_call_id=cid, name=name)
 
         results = await asyncio.gather(*[_run(tc) for tc in calls])
-        return {"messages": list(results)}
+        return {"messages": list(results), "tool_result_cache": next_cache}
 
     return _node
 
@@ -707,6 +739,94 @@ async def clarify_node(
     return {"messages": [response]}
 
 
+# ---- task supervision console (领导-部门制：监督台) ----
+
+_TASK_ID_RE = re.compile(r'"task_id"\s*:\s*"([0-9a-f]{8,12})"')
+
+
+def _collect_task_handles(state: dict, registry_entries: list[dict]) -> list[dict]:
+    """会话内已知任务句柄：active_tasks 缓存 + 最近 messages 里的 task_id token。"""
+    seen: dict[str, dict] = {}
+    for t in state.get("active_tasks", []) or []:
+        if isinstance(t, dict) and t.get("task_id"):
+            seen[str(t["task_id"])] = {"task_id": str(t["task_id"])}
+    for m in state.get("messages", []):
+        c = str(getattr(m, "content", ""))
+        for tid in _TASK_ID_RE.findall(c):
+            seen.setdefault(tid, {"task_id": tid})
+    # 与注册表并集回填 role/title（无则留空）
+    by_id = {e.get("task_id"): e for e in registry_entries}
+    out: list[dict] = []
+    for tid, h in seen.items():
+        e = by_id.get(tid) or {}
+        out.append({
+            "task_id": tid,
+            "role": h.get("role") or e.get("kind", ""),
+            "title": h.get("title") or e.get("title", ""),
+        })
+    return out
+
+
+def _format_entries(entries: list[dict]) -> str:
+    if not entries:
+        return "(没有匹配的任务；可建议用户用 task_list 查看全部)"
+    lines = []
+    for e in entries[:15]:
+        lines.append(
+            f"- [{e.get('kind', '?')}] {e.get('task_id', '?')} "
+            f"「{e.get('title', '')}」status={e.get('status', '?')} "
+            f"progress={e.get('progress', '')}")
+    return "\n".join(lines)
+
+
+@timed("task")
+async def task_node(state: AgentState, config) -> dict[str, Any]:
+    """轻量任务监督台：不经 resolve/search/plan 漏斗，直达任务注册表回答进度问询。
+
+    数据：本会话 active_tasks 句柄 + 最近 messages 里的 task_id + 当前问句术语，
+    经 agent/task_registry.find_tasks 拿统一条目。LLM 依据 TASK_SYSTEM 简洁转述；
+    LLM 失败 → 确定性条目表兜底。回写 active_tasks（去重 + cap 20）供后续引用。
+    """
+    from .task_registry import find_tasks
+    from .stream import emit as _stream_emit
+
+    query = _last_user_text(state) or ""
+    try:
+        entries = await find_tasks(query)
+    except Exception:
+        entries = []
+
+    context = _format_entries(entries)
+    handles = _collect_task_handles(state, entries)
+
+    model = _get_model(config)
+    answer = ""
+    try:
+        response = await _stream_llm(model, [
+            SystemMessage(content=TASK_SYSTEM),
+            HumanMessage(content=(
+                f"## User question\n{query or '(查看全部任务)'}\n\n"
+                f"## Task registry snapshot\n{context}")),
+        ], emit_tokens=False)
+        answer = response.content if hasattr(response, "content") else str(response)
+    except Exception as exc:
+        log_event("task_llm_failed", node="task", level="warning",
+                  error=f"{type(exc).__name__}: {exc}")
+
+    if not answer or not answer.strip():
+        answer = f"本回合任务状态：\n{context}"
+
+    _stream_emit({"type": "tasks", "entries": [
+        {k: e.get(k) for k in ("task_id", "kind", "title", "status", "progress")}
+        for e in entries[:20]
+    ]})
+
+    return {
+        "messages": [AIMessage(content=answer)],
+        "active_tasks": handles[:20],
+    }
+
+
 @timed("agent")
 async def agent_node(
     state: AgentState, config: RunnableConfig
@@ -995,6 +1115,23 @@ async def _synthesize_plan(state: AgentState, config: RunnableConfig) -> dict:
             parts.append(f"## {label}\n(step failed: {r.get('error', '')})")
     context = "\n\n".join(parts)
 
+    # 计划完成验证（报告式）：有未完成/失败步骤时把缺口明确带进 final answer，
+    # 让模型用已有证据作答并如实标注缺口，而不是假装全部完成。
+    verification = state.get("verification") or {}
+    v_status = verification.get("status", "")
+    if v_status and v_status != "satisfied":
+        lines = [
+            f"- {o.get('id')} | {o.get('description', '')} — {o.get('reason', '')}"
+            for o in verification.get("outstanding", [])
+        ]
+        if lines:
+            context = (
+                "## 未完成步骤（以下步骤未成功执行或未满足条件，最终回答必须如实说明"
+                "，再基于已有证据尽力回答）\n"
+                + "\n".join(lines)
+                + "\n\n" + context
+            )
+
     model = _get_model(config)
     user_q = _last_user_text(state) or ""
 
@@ -1131,6 +1268,8 @@ def route_intent(state: AgentState) -> str:
         return "chat"
     elif intent == "needs_clarify":
         return "clarify"
+    elif intent == "task_query":
+        return "task"
     else:
         return "resolve"
 
@@ -1207,6 +1346,16 @@ def after_agent(state: AgentState) -> str:
     has_tool_calls = hasattr(last, "tool_calls") and last.tool_calls
 
     if has_tool_calls:
+        # leader gate（领导-部门制）：调用 request_review → 挂起到 gate 节点
+        # interrupt 等待领导输入。仅当 worker 绑定了 request_review 才可能触发
+        # （父 agent / 普通 subagent 均未绑定 → 此分支不可达）。
+        # 注意：tool_calls 项可能是 dict 或 AIMessageToolCall，取值需双兼容。
+        if any(
+            (tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", ""))
+            == "request_review"
+            for tc in last.tool_calls
+        ):
+            return "gate"
         done = max(0, state.get("iteration", 0) - 1)
         if done >= state.get("max_steps", 30):
             return "synthesize"

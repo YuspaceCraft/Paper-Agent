@@ -2,7 +2,10 @@
  * TopBar.tsx — app header bar.
  */
 
+import { useState } from 'react';
 import type { FC } from 'react';
+import type { Settings } from '../api';
+import { ProjectPathPicker } from './ProjectPathPicker';
 
 export type Domain = 'chat' | 'write' | 'experiment';
 
@@ -15,6 +18,8 @@ interface Props {
   apiOnline: boolean;
   domain: Domain;
   onSwitchDomain: (d: Domain) => void;
+  settings: Settings | null;
+  onUpdatePaths: (patch: { project_path?: string | null; experiments_path?: string | null }) => void;
 }
 
 const DOMAINS: Array<{ key: Domain; label: string; icon: string }> = [
@@ -44,7 +49,11 @@ const btnStyle: React.CSSProperties = {
   gap: 4,
 };
 
-export const TopBar: FC<Props> = ({ leftPanelOpen, rightPanelOpen, onToggleLeft, onToggleRight, onUpload, apiOnline, domain, onSwitchDomain }) => (
+export const TopBar: FC<Props> = ({ leftPanelOpen, rightPanelOpen, onToggleLeft, onToggleRight, onUpload, apiOnline, domain, onSwitchDomain, settings, onUpdatePaths }) => {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const isCustom = !!settings?.project_path;
+
+  return (
   <header style={barStyle}>
     <button style={btnStyle} onClick={onToggleLeft} title="Toggle sidebar">
       {leftPanelOpen ? '◀' : '▶'}
@@ -71,6 +80,25 @@ export const TopBar: FC<Props> = ({ leftPanelOpen, rightPanelOpen, onToggleLeft,
 
     <div style={{ flex: 1 }} />
 
+    {/* 项目路径配置（文献问答 + 写作根；实验根在实验工作区单独配） */}
+    <button
+      style={{ ...btnStyle, border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer' }}
+      onClick={() => setPickerOpen(o => !o)}
+      title={isCustom ? `项目路径: ${settings!.project_path}` : '项目路径: 默认（代码仓库根）'}
+    >
+      ⚙ 路径{isCustom ? ' ·已配置' : ''}
+    </button>
+    {pickerOpen && (
+      <ProjectPathPicker
+        label="项目路径"
+        hint={settings ? `写作保存到 {路径}/writing` : ''}
+        value={settings?.project_path ?? ''}
+        allowClear
+        onPick={p => { onUpdatePaths({ project_path: p || null }); setPickerOpen(false); }}
+        onClose={() => setPickerOpen(false)}
+      />
+    )}
+
     <label style={{ ...btnStyle, background: 'var(--color-primary-light)', color: 'var(--color-primary)', borderRadius: 6, cursor: 'pointer' }}>
       ⬆ Upload PDF
       <input
@@ -95,4 +123,5 @@ export const TopBar: FC<Props> = ({ leftPanelOpen, rightPanelOpen, onToggleLeft,
       {rightPanelOpen ? '▶' : '◀'}
     </button>
   </header>
-);
+  );
+};

@@ -33,8 +33,10 @@ import httpx
 
 from . import ToolDef, ToolProvider
 from agent.safety import tool_allowed
+from agent.workspace_config import get_project_root
 
-# 工作区根 = 项目根。相对路径基于此解析，越界即拒。
+# 工作区根（默认） = 项目根 = workspace_config.get_project_root()
+# （未设置自定义 project_path 时即代码根）。相对路径基于此解析，越界即拒。
 # ponytail: 只允许项目根，不细分 data/；需要更严时收紧 _resolve_path。
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -59,18 +61,21 @@ def _ok(data: dict) -> str:
 
 # ---- 共享辅助 ----
 
-def resolve_workspace_path(path: str) -> Path:
+def resolve_workspace_path(path: str, root: Path | None = None) -> Path:
     """展开 ~ / 相对→绝对，拒绝逃出工作区（含 symlink / .. 穿越）。
 
-    工作区 root = 项目根，相对路径基于此解析，越界即拒。此守卫是
-    generic 工具与 web/api workspace 端点共用的唯一路径安全边界。
+    工作区 root = root 参数，缺省 = workspace_config.get_project_root()
+    （未设置 project_path 时即代码根，行为与旧版一致）。相对路径基于
+    root 解析，越界即拒。此守卫是 generic 工具与 web/api workspace 端点
+    共用的唯一路径安全边界；root 由调用方（配置/domain 视图）传入。
     """
+    base = (root or get_project_root()).resolve()
     p = Path(os.path.expanduser(path or "."))
     if not p.is_absolute():
-        p = _PROJECT_ROOT / p
+        p = base / p
     real = p.resolve()
     try:
-        real.relative_to(_PROJECT_ROOT.resolve())
+        real.relative_to(base)
     except ValueError:
         raise PermissionError(f"path escapes workspace: {path}")
     return real

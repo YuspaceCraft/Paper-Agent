@@ -4,20 +4,22 @@ coding.py — 编码域（v10 / Phase C）。
 职责（遵循 CLAUDE.md FastAPI 封装原则：本模块 = 纯 Python 业务层，
 `web/api/routers/experiments.py`/`study.py` 只做 HTTP 薄包装）：
 
-- **ExperimentStore**：实验记录 `web/workspace/experiments/{project}/runs/{exp_id}/`
-  （state.json + run.log + metrics 文件），后台子进程跑命令。
+- **ExperimentStore**：实验记录 `{experiments_root}/{project}/runs/{exp_id}/`
+  （state.json + run.log + metrics 文件），后台子进程跑命令。实验根可配置
+  （workspace_config.get_experiments_path，独立于文献问答根）。
 - **指标解析**：`runs/{exp_id}/` 下的 `metrics.json` / `metrics.csv` → 规范化 dict。
 - **git 工具**：`git_status/diff/log/commit`（cwd 限定 experiments/{project}）。
 - **delegate_code_task**：外部 coding agent 委托——**MCP bridge 优先，CLI subprocess
   兜底**（GitHub 调研定案 + 开箱可用原则）。后端可插拔：优先读 `.mcp.json` 中
   coding server 工具（见 `_coding_mcp_tool()`），不可用时走 `AGENT_CODING_CMD`
   /探测 `claude`/`codex` 头less CLI。prompt **不写死模型名**（模型由外部 CLI/Server 注入）。
-- **研究知识库 study**：`web/workspace/studies/{topic}/knowledge.json`——实验记录由
-  **确定性代码**在 exp 结束自动追加（agent 只读引用，防 LLM 篡改事实）。
+- **研究知识库 study**：`{experiments_root.parent}/studies/{topic}/knowledge.json`
+  （跟随实验根移动）——实验记录由**确定性代码**在 exp 结束自动追加（agent 只读引用，
+  防 LLM 篡改事实）。
 
-安全：project 名白名单字符；路径全部经 `resolve_workspace_path` 越界判定并限定在
-experiments/ 内；`run_experiment`/`git_commit`/`delegate_code_task` 走权限门
-（CodingProvider destructive）。
+安全：project 名白名单字符；路径 resolve 后越界判定限定在实验根内；
+`run_experiment`/`git_commit`/`delegate_code_task` 走权限门（CodingProvider
+destructive）。
 """
 
 from __future__ import annotations
@@ -35,14 +37,26 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 from ..providers import ToolDef, ToolProvider
-from ..providers.generic_provider import resolve_workspace_path
 from ..safety import tool_allowed
+from .. import workspace_config
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-EXPERIMENTS_ROOT = PROJECT_ROOT / "web" / "workspace" / "experiments"
-STUDY_ROOT = PROJECT_ROOT / "web" / "workspace" / "studies"
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 _SLUG_RE = __import__("re").compile(r"[^a-zA-Z0-9_.-]+")
+
+
+def _experiments_root() -> Path:
+    """实验根（可配置，独立于文献问答；默认 web/workspace/experiments）。"""
+    return workspace_config.get_experiments_path()
+
+
+def _study_root() -> Path:
+    """研究知识库根（跟随实验根 parent/studies；默认 web/workspace/studies）。"""
+    return workspace_config.get_study_root()
+
+
+def _runs_dir() -> Path:
+    return _experiments_root() / "_runs"
 
 
 def _ok(data: dict | list) -> str:
@@ -63,10 +77,11 @@ def _safe_project(name: str) -> str:
 
 
 def _project_dir(project: str) -> Path:
-    """experiments 项目目录（安全 slug）。路径必须落在 EXPERIMENTS_ROOT 内。"""
-    d = (EXPERIMENTS_ROOT / _safe_project(project)).resolve()
+    """experiments 项目目录（安全 slug）。路径必须落在实验根内。"""
+    root = _experiments_root()
+    d = (root / _safe_project(project)).resolve()
     try:
-        d.relative_to(EXPERIMENTS_ROOT.resolve())
+        d.relative_to(root.resolve())
     except ValueError:
         raise PermissionError(f"project escapes experiments root: {project}")
     return d
@@ -74,10 +89,7 @@ def _project_dir(project: str) -> Path:
 
 def _exp_dir(exp_id: str) -> Path:
     # exp_id 是生成的 hex uuid，天然安全
-    return EXPERIMENTS_ROOT / "_runs" / exp_id
-
-
-_RUNS = EXPERIMENTS_ROOT / "_runs"
+    return _runs_dir() / exp_id
 
 
 def _state_path(exp_id: str) -> Path:
@@ -95,19 +107,21 @@ def _load_exp(exp_id: str) -> dict | None:
 
 
 def _load_projects() -> list[str]:
-    if not EXPERIMENTS_ROOT.exists():
+    root = _experiments_root()
+    if not root.exists():
         return []
     return sorted(
-        p.name for p in EXPERIMENTS_ROOT.iterdir()
+        p.name for p in root.iterdir()
         if p.is_dir() and p.name != "_runs"
     )
 
 
 def _list_experiments(project: str | None = None) -> list[dict]:
     out: list[dict] = []
-    if not _RUNS.exists():
+    runs = _runs_dir()
+    if not runs.exists():
         return out
-    for d in sorted(_RUNS.iterdir(), reverse=True):
+    for d in sorted(runs.iterdir(), reverse=True):
         st = _load_exp(d.name)
         if not st:
             continue
@@ -265,7 +279,7 @@ async def _spawn(exp: dict) -> None:
 # ---- study knowledge base（确定性写入 / 只读引用） ----
 
 def _study_path(topic: str) -> Path:
-    return STUDY_ROOT / _SLUG_RE.sub("_", (topic or "general").strip()) / "knowledge.json"
+    return _study_root() / _SLUG_RE.sub("_", (topic or "general").strip()) / "knowledge.json"
 
 
 def load_study(topic: str) -> dict:
@@ -309,7 +323,7 @@ def _git_sha(project: str) -> str:
     try:
         out = subprocess.run(
             ["git", "-C", str(_project_dir(project)), "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, encoding="utf-8", errors="replace", timeout=10,
         )
         return out.stdout.strip() if out.returncode == 0 else ""
     except Exception:
@@ -321,8 +335,8 @@ def _git_sha(project: str) -> str:
 @tool
 async def run_experiment(project: str, command: str, name: str = "") -> str:
     """Run a command as a background experiment inside experiments/{project}.
-    The project folder receives web/workspace/experiments/{project} (created if
-    missing). Logs stream to runs/<exp_id>/run.log; a metrics.json/metrics.csv
+    The project folder receives the configured experiments root / {project}
+    (created if missing). Logs stream to runs/<exp_id>/run.log; a metrics.json/metrics.csv
     written by the command is parsed automatically on completion. Returns
     {"ok": true, "data": {exp_id, status: "running"}} — poll experiment_status."""
     exp_id = uuid.uuid4().hex[:10]
@@ -415,11 +429,11 @@ async def git_commit(project: str, message: str) -> str:
     if not (d / ".git").exists():
         return _err(f"{project} is not a git repo (git init first)", error_type="param_error")
     add = subprocess.run(["git", "-C", str(d), "add", "-A"],
-                         capture_output=True, text=True, timeout=30)
+                         capture_output=True, encoding="utf-8", errors="replace", timeout=30)
     if add.returncode != 0:
         return _err(add.stderr[:500], error_type="transient")
     cm = subprocess.run(["git", "-C", str(d), "commit", "-m", message],
-                        capture_output=True, text=True, timeout=30)
+                        capture_output=True, encoding="utf-8", errors="replace", timeout=30)
     if cm.returncode != 0:
         return _err(cm.stderr[:500], error_type="transient")
     return _ok({"sha": _git_sha(project), "message": message})
@@ -427,7 +441,7 @@ async def git_commit(project: str, message: str) -> str:
 
 def _git(d: Path, cmd: list[str]) -> str:
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        out = subprocess.run(cmd, capture_output=True, encoding="utf-8", errors="replace", timeout=15)
         return _ok({"output": (out.stdout or out.stderr)[:6000]}) if out.returncode == 0 \
             else _err((out.stderr or out.stdout)[:600], error_type="transient")
     except Exception as exc:
@@ -442,7 +456,7 @@ _CODING_CMDS = ("claude", "codex")
 @tool
 async def delegate_code_task(project: str, prompt: str, timeout: int = 600) -> str:
     """Delegate a coding task to an EXTERNAL coding agent (MCP bridge first,
-    CLI subprocess fallback), running inside web/workspace/experiments/{project}.
+    CLI subprocess fallback), running inside the configured experiments root / {project}.
 
     The delegate edits/writes files directly in the project folder and returns
     a summary — the parent then inspects changes via git_diff. External model
@@ -527,7 +541,7 @@ def _changed_files(cwd: Path, limit: int = 30) -> list[str]:
     if (cwd / ".git").exists():
         try:
             out = subprocess.run(["git", "-C", str(cwd), "status", "--porcelain"],
-                                 capture_output=True, text=True, timeout=10)
+                                 capture_output=True, encoding="utf-8", errors="replace", timeout=10)
             if out.returncode == 0:
                 return [ln[3:].strip() for ln in out.stdout.splitlines() if ln.strip()][:limit]
         except Exception:
@@ -574,14 +588,15 @@ async def study_add_hypothesis(topic: str, hypothesis: str) -> str:
 CODING_TOOLDEFS = [
     ToolDef(name="run_experiment", source="builtin", annotations={"readOnlyHint": False},
             description=(
-                "Run a command as a background experiment inside experiments/{project}. "
-                "Logs to runs/<exp_id>/run.log; metrics.json/metrics.csv written by the "
-                "command are parsed on completion. Returns {exp_id, status:'running'} — "
-                "then poll experiment_status. For '复现/跑一下实验/训练' requests."),
+                "Run a command as a background experiment inside experiments/{project} "
+                "(in the configured experiments root). Logs to runs/<exp_id>/run.log; "
+                "metrics.json/metrics.csv written by the command are parsed on "
+                "completion. Returns {exp_id, status:'running'} — then poll "
+                "experiment_status. For '复现/跑一下实验/训练' requests."),
             parameters={"type": "object",
                         "properties": {
                             "project": {"type": "string",
-                                        "description": "Experiment project folder name under experiments/."},
+                                        "description": "Experiment project folder name under the experiments root."},
                             "command": {"type": "string",
                                         "description": "Shell command to run (e.g. 'python train.py')"},
                             "name": {"type": "string", "description": "Optional experiment label.", "default": ""}},
@@ -628,8 +643,8 @@ CODING_TOOLDEFS = [
             description=(
                 "Delegate a coding task to an EXTERNAL coding agent (MCP bridge first, "
                 "headless CLI fallback: claude -p / codex exec). It works inside "
-                "web/workspace/experiments/{project}, edits files there, returns a "
-                "summary + changed_files. Use for implement/tune/bugfix/refactor jobs."),
+                "the configured experiments root / {project}, edits files there, "
+                "returns a summary + changed_files. Use for implement/tune/bugfix/refactor jobs."),
             parameters={"type": "object",
                         "properties": {
                             "project": {"type": "string"},

@@ -6,6 +6,24 @@
 
 // ---- types ----
 
+/** 客户端执行模式切换：auto = 后端启发式 | react | plan（显式指定）。 */
+export type AgentMode = 'auto' | 'react' | 'plan';
+
+/** plan_step / plan_verify 检查出的一步未完成项。 */
+export interface PlanOutstanding {
+  id: string;
+  description: string;
+  reason: string;
+}
+
+/** verify_node 的报告式验证结论。 */
+export interface PlanVerdictData {
+  status: 'satisfied' | 'partial' | 'failed' | 'no_evidence' | string;
+  done: number;
+  total: number;
+  outstanding: PlanOutstanding[];
+}
+
 /** One tool call the agent made this turn, rendered as a collapsible step. */
 export interface ToolStep {
   id: string;
@@ -22,11 +40,16 @@ export interface ToolStep {
   kind?: 'subagent' | 'tool';
 }
 
-/** One step of a plan (plan-and-execute mode), emitted by the plan node. */
+/** One step of a plan (plan-and-execute mode), emitted by the plan node.
+    status 由 plan_step / tool 事件驱动 TODO 列表的实时勾选；output 供
+    skipped（守卫）步骤展示跳过原因。 */
 export interface PlanStep {
   id: string;
   description: string;
   target: string;
+  depends_on?: string[];
+  status?: 'pending' | 'running' | 'done' | 'failed' | 'skipped';
+  output?: string;
 }
 
 export interface Message {
@@ -35,6 +58,12 @@ export interface Message {
   content: string;
   steps?: ToolStep[];
   plan?: PlanStep[];
+  /** 计划完成度 {done, total}，后端 plan_progress 事件。 */
+  planProgress?: { done: number; total: number } | null;
+  /** verify_node 的报告式验证结论（plan 模式收尾）。 */
+  verify?: PlanVerdictData | null;
+  /** 本回合实际执行模式（mode SSE 事件）。 */
+  mode?: 'react' | 'plan';
   status: 'complete' | 'streaming' | 'aborted';
   timestamp: string;
 }
@@ -44,6 +73,8 @@ export interface ThreadMeta {
   messageCount: number;
   createdAt: string;
   updatedAt: string;
+  /** 该对话的客户端模式偏好（按对话记忆，localStorage 持久化）。 */
+  mode: AgentMode;
 }
 
 /**
@@ -109,6 +140,11 @@ export type Action =
   | { type: 'ADD_TOOL_STEP'; messageId: string; step: ToolStep }
   | { type: 'UPDATE_TOOL_STEP'; messageId: string; toolCallId: string; patch: Partial<ToolStep> }
   | { type: 'SET_PLAN'; messageId: string; plan: PlanStep[] }
+  | { type: 'UPDATE_PLAN_STEP'; messageId: string; stepId: string; patch: Partial<PlanStep> }
+  | { type: 'SET_PLAN_PROGRESS'; messageId: string; done: number; total: number }
+  | { type: 'SET_PLAN_VERIFY'; messageId: string; verdict: PlanVerdictData }
+  | { type: 'SET_MODE'; messageId: string; mode: 'react' | 'plan' }
+  | { type: 'SET_THREAD_MODE'; threadId: string; mode: AgentMode }
   | { type: 'ABORT_MESSAGE'; messageId: string }
   | { type: 'SET_STREAMING'; isStreaming: boolean }
   | { type: 'SET_RIGHT_PANEL_WIDTH'; width: number }
@@ -183,14 +219,58 @@ function mergeTask(existing: BackgroundTask | undefined, incoming: BackgroundTas
 
 // ---- step tree helpers ----
 // `steps` is a tree: subagent steps have `children`, leaf tools have `parentId`.
+// v15: 树维护幂等化 —— ①同一 id 去重(后端 executor 重试/重复 emitter 会重发
+// 相同 id 的 tool_start); ②乱序重挂 —— 子步骤在父卡未到时先挂顶层,父卡插入
+// 时统一移回其 children,摆脱对 SSE 到达顺序的隐式依赖。
 
-function insertStep(steps: ToolStep[], step: ToolStep): ToolStep[] {
-  if (!step.parentId) return [...steps, step];
-  return steps.map(s => {
-    if (s.id === step.parentId) return { ...s, children: [...(s.children ?? []), step] };
-    if (s.children) return { ...s, children: insertStep(s.children, step) };
+/** Recursively find whether a step with `id` already exists (dedup key). */
+function findStep(steps: ToolStep[], id: string): boolean {
+  for (const s of steps) {
+    if (s.id === id) return true;
+    if (s.children && findStep(s.children, id)) return true;
+  }
+  return false;
+}
+
+/** Attach `step` under the node with `parentId`; `ok=false` if parent missing. */
+function attachUnder(steps: ToolStep[], parentId: string, step: ToolStep):
+  { steps: ToolStep[]; ok: boolean } {
+  let ok = false;
+  const next = steps.map(s => {
+    if (ok) return s;
+    if (s.id === parentId) {
+      ok = true;
+      return { ...s, children: [...(s.children ?? []), step] };
+    }
+    if (s.children) {
+      const kid = attachUnder(s.children, parentId, step);
+      if (kid.ok) {
+        ok = true;
+        return { ...s, children: kid.steps };
+      }
+    }
     return s;
   });
+  return { steps: next, ok };
+}
+
+function insertStep(steps: ToolStep[], step: ToolStep): ToolStep[] {
+  if (findStep(steps, step.id)) return steps;  // 幂等去重
+
+  if (step.parentId) {
+    const attached = attachUnder(steps, step.parentId, step);
+    if (attached.ok) return attached.steps;
+    // 父卡还没到 → 暂挂顶层,等父卡插入时被吸收重挂
+    return [...steps, step];
+  }
+
+  // 顶层新父节点:吸收顶层中 parentId 指向它的待定子步骤(乱序重挂)
+  const pending = steps.filter(s => s.parentId === step.id);
+  if (pending.length) {
+    const rest = steps.filter(s => s.parentId !== step.id);
+    return [...rest, { ...step, children: [...(step.children ?? []), ...pending] }];
+  }
+  return [...steps, step];
 }
 
 function patchStep(steps: ToolStep[], id: string, patch: Partial<ToolStep>): ToolStep[] {
@@ -199,6 +279,10 @@ function patchStep(steps: ToolStep[], id: string, patch: Partial<ToolStep>): Too
     if (s.children) return { ...s, children: patchStep(s.children, id, patch) };
     return s;
   });
+}
+
+function patchPlanStep(plan: PlanStep[] | undefined, stepId: string, patch: Partial<PlanStep>): PlanStep[] {
+  return (plan ?? []).map(s => (s.id === stepId ? { ...s, ...patch } : s));
 }
 
 // ---- reducer ----
@@ -210,7 +294,7 @@ export function appReducer(state: AppState, action: Action): AppState {
 
     case 'CREATE_THREAD': {
       const now = new Date().toISOString();
-      const meta: ThreadMeta = { title: '', messageCount: 0, createdAt: now, updatedAt: now };
+      const meta: ThreadMeta = { title: '', messageCount: 0, createdAt: now, updatedAt: now, mode: 'auto' };
       return {
         ...state,
         threads: { ...state.threads, [action.threadId]: meta },
@@ -327,6 +411,54 @@ export function appReducer(state: AppState, action: Action): AppState {
         ),
       };
 
+    case 'UPDATE_PLAN_STEP':
+      return {
+        ...state,
+        messages: state.messages.map(m =>
+          m.id === action.messageId
+            ? { ...m, plan: patchPlanStep(m.plan, action.stepId, action.patch) }
+            : m
+        ),
+      };
+
+    case 'SET_PLAN_PROGRESS':
+      return {
+        ...state,
+        messages: state.messages.map(m =>
+          m.id === action.messageId
+            ? { ...m, planProgress: { done: action.done, total: action.total } }
+            : m
+        ),
+      };
+
+    case 'SET_PLAN_VERIFY':
+      return {
+        ...state,
+        messages: state.messages.map(m =>
+          m.id === action.messageId ? { ...m, verify: action.verdict } : m
+        ),
+      };
+
+    case 'SET_MODE':
+      return {
+        ...state,
+        messages: state.messages.map(m =>
+          m.id === action.messageId ? { ...m, mode: action.mode } : m
+        ),
+      };
+
+    case 'SET_THREAD_MODE': {
+      const th = state.threads[action.threadId];
+      if (!th) return state;
+      return {
+        ...state,
+        threads: {
+          ...state.threads,
+          [action.threadId]: { ...th, mode: action.mode },
+        },
+      };
+    }
+
     case 'ABORT_MESSAGE':
       return {
         ...state,
@@ -413,7 +545,14 @@ const MSG_PREFIX = 'demo_msgs_';
 export function loadThreads(): { threads: Record<string, ThreadMeta>; threadOrder: string[] } {
   try {
     const raw = localStorage.getItem(THREADS_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const { threads, threadOrder } = JSON.parse(raw);
+      // 旧版本持久化数据缺 mode → 兜底 'auto'，避免 undefined 破坏切换按键
+      for (const t of Object.values(threads ?? {})) {
+        (t as ThreadMeta).mode = ((t as ThreadMeta).mode ?? 'auto') as AgentMode;
+      }
+      return { threads: threads ?? {}, threadOrder: threadOrder ?? [] };
+    }
   } catch { /* ignore */ }
   return { threads: {}, threadOrder: [] };
 }

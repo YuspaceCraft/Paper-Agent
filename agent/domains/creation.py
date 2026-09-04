@@ -29,9 +29,18 @@ from langchain_core.tools import tool
 from ..providers import ToolDef, ToolProvider
 from ..safety import tool_allowed
 from ..stream import emit
+from .. import workspace_config
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-WORKSPACE_DOCS = PROJECT_ROOT / "web" / "workspace" / "docs"
+
+# 写作文档根 — 动态（不迁移旧数据）：
+#   未设置自定义 project_path → web/workspace/docs（旧行为不变）
+#   显式设置 project_path   → {project_path}/writing
+# 测试用 monkeypatch 模块级 get_writing_dir 别名或 workspace_config.set_override。
+def get_writing_dir() -> Path:
+    """写作文档根（跟随项目路径配置）。"""
+    return workspace_config.get_docs_dir()
+
 
 _SLUG_RE = re.compile(r"[^a-z0-9-]")
 
@@ -43,7 +52,7 @@ def _safe_id(value: str, default: str = "") -> str:
 
 
 def _doc_dir(doc_id: str) -> Path:
-    return WORKSPACE_DOCS / _safe_id(doc_id)
+    return get_writing_dir() / _safe_id(doc_id)
 
 
 def _ok(data: dict | list) -> str:
@@ -202,8 +211,9 @@ async def doc_list(status: str = "") -> str:
     """List writing documents. Returns JSON {"ok": true, "data": {docs: [...]}}.
     Optional status filter: outline | writing | done."""
     docs = []
-    if WORKSPACE_DOCS.exists():
-        for d in sorted(WORKSPACE_DOCS.iterdir()):
+    docs_dir = get_writing_dir()
+    if docs_dir.exists():
+        for d in sorted(docs_dir.iterdir()):
             if not d.is_dir() or not (d / "doc.json").exists():
                 continue
             doc = _load_doc(d.name)
@@ -320,7 +330,7 @@ async def doc_get_state(doc_id: str) -> str:
 @tool
 async def doc_export_docx(doc_id: str, format: str = "docx") -> str:
     """Export a document to a .docx file (python-docx). Returns the saved
-    relative path (under web/workspace/docs/<doc>/exports/). `format` ignored
+    relative path (under the writing dir — {project_path}/writing/<doc>/exports/). `format` ignored
     for now (only docx).
     """
     sid = _safe_id(doc_id)
@@ -337,8 +347,8 @@ async def doc_export_docx(doc_id: str, format: str = "docx") -> str:
     except Exception:
         return _err("docx render failed (python-docx available?)", error_type="transient")
     try:
-        rel = path.relative_to(PROJECT_ROOT).as_posix()
-    except ValueError:  # WORKSPACE_DOCS 被重定向到根目录外（测试隔离）时退化为文件名
+        rel = path.relative_to(get_writing_dir()).as_posix()
+    except ValueError:  # writing dir 被重定向时（测试隔离）退化为文件名
         rel = path.name
     return _ok({"doc_id": sid, "export_path": rel})
 
@@ -465,7 +475,7 @@ CREATION_TOOLDEFS = [
         name="doc_export_docx",
         description=(
             "Export a document to .docx (python-docx). Returns the saved relative "
-            "path under web/workspace/docs/<doc>/exports/."
+            "path under the writing dir (<doc>/exports/)."
         ),
         parameters={
             "type": "object",

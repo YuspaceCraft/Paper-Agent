@@ -11,7 +11,7 @@ import {
   loadThreads, saveThreads, loadMessages, saveMessages,
   loadBgTasks, saveBgTasks, parseTaskTs,
 } from './state';
-import { api, setBaseUrl, markProxyReady, streamNotify, openTaskStream, whenBackendReady } from './api';
+import { api, setBaseUrl, markProxyReady, streamNotify, openTaskStream, whenBackendReady, type Settings } from './api';
 
 import { TopBar, type Domain } from './components/TopBar';
 import { LeftPanel } from './components/LeftPanel';
@@ -46,6 +46,7 @@ const App: FC = () => {
   const [apiOnline, setApiOnline] = useState(true);
   const [backendError, setBackendError] = useState('');
   const [domain, setDomain] = useState<Domain>('chat');
+  const [settings, setSettings] = useState<Settings | null>(null);
 
   // Fetch server info (papers / index / health). Called on mount and again when
   // the Electron backend reports ready (its port is only known at that point).
@@ -55,6 +56,23 @@ const App: FC = () => {
       setApiOnline(true);
     }).catch(() => setApiOnline(false));
     api.getIndexStats().then(s => dispatch({ type: 'SET_INDEX_STATS', stats: s })).catch(() => {});
+  }, []);
+
+  // ---- path settings（项目路径/实验根）：backend ready 后拉取；变更后回写 ----
+  useEffect(() => {
+    let alive = true;
+    void whenBackendReady().then(() => {
+      api.getSettings().then(s => { if (alive) setSettings(s); }).catch(() => {});
+    });
+    return () => { alive = false; };
+  }, []);
+
+  const handleUpdatePaths = useCallback(async (patch: { project_path?: string | null; experiments_path?: string | null }) => {
+    try {
+      setSettings(await api.updateSettings(patch));
+    } catch (e) {
+      alert('更新路径失败: ' + String(e));
+    }
   }, []);
 
   // ---- init: load persisted data + fetch server info ----
@@ -460,6 +478,8 @@ const App: FC = () => {
           apiOnline={apiOnline}
           domain={domain}
           onSwitchDomain={setDomain}
+          settings={settings}
+          onUpdatePaths={handleUpdatePaths}
         />
 
         {/* Backend startup failure (e.g. :8001 port conflict) — surface it,
@@ -513,9 +533,9 @@ const App: FC = () => {
 
           <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {domain === 'write' ? (
-              <WriterView />
+              <WriterView writingDir={settings?.writing_dir} />
             ) : domain === 'experiment' ? (
-              <ExperimentView />
+              <ExperimentView experimentsPath={settings?.experiments_path} onUpdatePaths={handleUpdatePaths} />
             ) : (
             <>
             <TaskCenter
@@ -529,6 +549,10 @@ const App: FC = () => {
                 threadId={state.activeThreadId}
                 messages={state.messages}
                 isStreaming={state.isStreaming}
+                mode={state.threads[state.activeThreadId]?.mode ?? 'auto'}
+                onModeChange={m => {
+                  if (state.activeThreadId) dispatch({ type: 'SET_THREAD_MODE', threadId: state.activeThreadId, mode: m });
+                }}
                 onAddMessage={msg => dispatch({ type: 'ADD_MESSAGE', message: msg })}
                 onAppendToken={(msgId, token) => dispatch({ type: 'APPEND_TOKEN', messageId: msgId, token })}
                 onFinishMessage={msgId => {
@@ -549,6 +573,10 @@ const App: FC = () => {
                   }
                 }}
                 onPlan={(msgId, plan) => dispatch({ type: 'SET_PLAN', messageId: msgId, plan })}
+                onPlanStep={(msgId, stepId, patch) => dispatch({ type: 'UPDATE_PLAN_STEP', messageId: msgId, stepId, patch })}
+                onPlanProgress={(msgId, done, total) => dispatch({ type: 'SET_PLAN_PROGRESS', messageId: msgId, done, total })}
+                onPlanVerify={(msgId, verdict) => dispatch({ type: 'SET_PLAN_VERIFY', messageId: msgId, verdict })}
+                onMode={(msgId, mode) => dispatch({ type: 'SET_MODE', messageId: msgId, mode })}
                 onSetStreaming={v => dispatch({ type: 'SET_STREAMING', isStreaming: v })}
               />
             ) : (
@@ -575,7 +603,7 @@ const App: FC = () => {
             onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = 'transparent'}
           />
 
-          <FileExplorer open={state.rightPanelOpen} />
+          <FileExplorer open={state.rightPanelOpen} root={domain === 'experiment' ? 'experiments' : 'project'} />
         </div>
 
         <StatusBar

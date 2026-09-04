@@ -40,9 +40,10 @@ def _wait_exp_idle(exp_id: str, rounds: int = 60) -> dict:
 
 
 def _setup(tmp_root: Path):
-    coding.EXPERIMENTS_ROOT = tmp_root / "experiments"
-    coding.STUDY_ROOT = tmp_root / "studies"
-    coding._RUNS = coding.EXPERIMENTS_ROOT / "_runs"
+    # 实验/研究根走 workspace_config override（隔离到临时目录）
+    from agent import workspace_config as wc
+    wc.set_override("experiments_path", tmp_root / "experiments")
+    wc.set_override("study_root", tmp_root / "studies")
 
 
 def test_run_experiment_lifecycle(tmp_root: Path):
@@ -118,7 +119,7 @@ def test_safe_project_blocks_escape(tmp_root: Path):
     # 路径限定：project 无论如何必须落在 EXPERIMENTS_ROOT 内（resolve 兜底）
     from agent.domains.coding import _project_dir
     d = _project_dir("../../evil")
-    assert d.is_relative_to(coding.EXPERIMENTS_ROOT)
+    assert d.is_relative_to(coding._experiments_root())
     assert "/" not in d.name and "\\" not in d.name
 
 
@@ -171,7 +172,7 @@ def test_coding_plan_calls_coder():
 def test_git_tools_when_available(tmp_root: Path):
     """git 仓库可用时 commit/diff 正常；无仓库 → 结构化错误。"""
     _setup(tmp_root)
-    proj = coding.EXPERIMENTS_ROOT / "demogit"
+    proj = coding._experiments_root() / "demogit"
     proj.mkdir(parents=True, exist_ok=True)
     if not shutil.which("git"):
         return

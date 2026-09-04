@@ -106,10 +106,24 @@ SSE 事件类型（`/api/agent/chat/stream`）：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/workspace/list?path=<相对路径>` | 列目录（目录项含 name/is_dir/size） |
-| GET | `/api/workspace/read?path=<相对路径>` | 读文件内容（文本截断 ~32KB，二进制返回 is_binary 标记） |
+| GET | `/api/workspace/list?path=<相对路径>&root=<project\|experiments>` | 列目录（目录项含 name/is_dir/size；root 决定基准根） |
+| GET | `/api/workspace/read?path=<相对路径>&root=<project\|experiments>` | 读文件内容（文本截断 ~32KB，二进制返回 is_binary 标记） |
+| GET | `/api/workspace/browse?path=<绝对路径或空>` | 只读目录浏览（路径选择器用）：空 → 盘符列表；非空 → 子目录列表。**刻意越界**，绝不可写 |
 
-路径安全边界复用 `agent/providers/generic_provider.py:resolve_workspace_path`（工作区根 = 项目根，越界 / symlink / `..` 穿越即 403）。供桌面客户端文件 explorer 使用。
+路径安全边界复用 `agent/providers/generic_provider.py:resolve_workspace_path`（root 缺省 = `workspace_config.get_project_root()`，越界 / symlink / `..` 穿越即 403）。供桌面客户端文件 explorer 使用。`root=project` = 文献问答+写作根（可配置项目路径），`root=experiments` = 实验根（独立）。
+
+### 路径配置（Settings）— `routers/settings.py`
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/settings` | 当前路径配置 |
+| PUT | `/api/settings` | 更新 `{project_path?, experiments_path?}`，传空串清除自定义值 |
+
+返回 `{project_path, project_root, experiments_path, writing_dir}`。领域逻辑在 `agent/workspace_config.py`（settings.json 持久化，原子写）。探索逻辑：
+- `project_path` 未设置 → 项目根=代码根、写作目录=`web/workspace/docs`（旧行为，不迁移）；
+- 设置后 → 项目根=所选路径、写作目录=`{project_path}/writing`；
+- `experiments_path` 独立可配，默认 `web/workspace/experiments`；研究知识库根随实验根 `parent/studies`。
+- PUT 由 `asyncio.Lock` 包 read-modify-write，失败（相对路径/不可建目录）返回 400。
 
 ### 创作（Creation）— `routers/creation.py`（v10 / Phase A）
 
@@ -122,7 +136,7 @@ SSE 事件类型（`/api/agent/chat/stream`）：
 | GET | `/api/creation/docs/{doc_id}` | 文档全状态（outline + sections + assembled_md） |
 | GET | `/api/creation/docs/{doc_id}/export-docx` | 下载 .docx（python-docx 渲染，FileResponse） |
 
-薄封装：序列化 + 文件响应，领域逻辑在 `agent/domains/creation.py`（`web/workspace/docs/{doc_id}/` 落盘）。agent 内部文档工具直接调模块（不走 HTTP）。
+薄封装：序列化 + 文件响应，领域逻辑在 `agent/domains/creation.py`（落盘写作根：未设置项目路径时 `web/workspace/docs/{doc_id}/`，设置后 `{project_path}/writing/{doc_id}/`）。agent 内部文档工具直接调模块（不走 HTTP）。
 
 ### 实验（Experiments）— `routers/experiments.py`（v10 / Phase C）
 
@@ -136,8 +150,7 @@ SSE 事件类型（`/api/agent/chat/stream`）：
 | GET | `/api/experiments/{exp_id}/logs` | 完整日志（~20KB） |
 | GET | `/api/experiments/projects/{project}/git?kind=diff\|log\|status` | 项目 git 只读面板（Phase D） |
 
-数据落在 `web/workspace/experiments/{project}/`（`_runs/{exp_id}/` 快照: state.json +
-run.log + metrics 快照）；实验结束确定性归档进研究知识库。
+数据落在实验根 `/experiments/{project}/`（默认 `web/workspace/experiments`，可经 /api/settings 另配；`_runs/{exp_id}/` 快照: state.json + run.log + metrics 快照）；实验结束确定性归档进研究知识库（跟随实验根 `parent/studies/`）。
 
 ### 研究知识库（Study）— `routers/study.py`（v10 / Phase C）
 
@@ -146,7 +159,7 @@ run.log + metrics 快照）；实验结束确定性归档进研究知识库。
 | GET | `/api/study/context?topic=` | 知识库（hypotheses / 近期实验记录含指标 / findings） |
 | POST | `/api/study/hypotheses?topic=` | 追加研究假设 `{hypothesis}` |
 
-落盘 `web/workspace/studies/{topic}/knowledge.json`（领域逻辑在 `agent/domains/coding.py`）。
+落盘 `{experiments_root.parent}/studies/{topic}/knowledge.json`（跟随实验根；默认 `web/workspace/studies`。领域逻辑在 `agent/domains/coding.py`）。
 
 ## 去重
 

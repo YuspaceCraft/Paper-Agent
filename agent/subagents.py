@@ -19,7 +19,7 @@ import uuid
 from dataclasses import dataclass
 
 from langgraph.graph import StateGraph, END
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import StructuredTool, tool
 from langchain_core.runnables.config import RunnableConfig
 from pydantic import BaseModel, Field
 
@@ -63,7 +63,68 @@ async def _subagent_synthesize(state: AgentState, config) -> dict:
     return {"messages": [AIMessage(content=text or "No answer produced.")]}
 
 
-def build_subagent(name, system_prompt, tools, *, max_steps=5):
+# ---- leader gate（领导-部门制：worker 需要领导输入时 interrupt 暂停） ----
+
+@tool
+async def request_review(question: str) -> str:
+    """Pause this task and ask the leader (main agent) for input or a decision.
+
+    Execution stops immediately at an interrupt checkpoint; after the leader
+    replies via task_resume(), the run continues and this tool returns the
+    leader's answer as its result. Use ONLY when the task truly needs leader
+    input: approval, missing information, or a direction choice the task
+    cannot make on its own. Never use for routine sub-steps."""
+    return "PENDING_LEADER_REVIEW"  # gate 节点 interrupt 后合成的领导回复才是真实结果
+
+
+async def _gate_node(state: AgentState, config):
+    """Leader gate node: pause on a request_review tool call (interrupt()).
+
+    LangGraph 原生干预机制：节点内 interrupt() 让运行停在已保存的 checkpoint 上
+    （ainvoke 正常返回），worker 线程保持 interrupted 状态；领导经
+    supervisor.resume(task_id, reply) 以 Command(resume=reply, thread_id=task_id)
+    续跑。node 再执行时把领导回复伪造为该 request_review 调用的 ToolMessage，
+    worker 下一次 agent 调用即把它当正常工具结果看到。
+    """
+    from langchain_core.messages import ToolMessage
+    from langgraph.types import interrupt
+
+    msgs = state["messages"]
+    last = next((m for m in reversed(msgs) if getattr(m, "type", "") == "ai"), None)
+    call = None
+    if last is not None and getattr(last, "tool_calls", None):
+        call = next((
+            tc for tc in last.tool_calls
+            if (tc.get("name") if isinstance(tc, dict)
+                else getattr(tc, "name", "")) == "request_review"
+        ), None)
+    if isinstance(call, dict):
+        args, call_id = call.get("args") or {}, call.get("id") or ""
+    else:
+        args, call_id = (getattr(call, "args", None) or {}), getattr(call, "id", "") or ""
+    question = str(args.get("question", "")) or "需要领导确认"
+    call_id = call_id or "gate"
+    # Py3.10 + async 节点：LangGraph 不注入 var_child_runnable_config，interrupt()
+    # 依赖的 get_config() 会抛 "outside of a runnable context"（与 get_stream_writer
+    # 同类限制，见 stream.py）。手动把节点 config 桥进 contextvar，绕过硬限制。
+    from langchain_core.runnables.config import var_child_runnable_config
+    _conf = config if isinstance(config, dict) else {}
+    _tok = var_child_runnable_config.set(_conf)
+    try:
+        reply = interrupt({"question": question})
+    finally:
+        var_child_runnable_config.reset(_tok)
+    if not reply:
+        reply = "(领导未提供输入，按最佳判断继续)"
+    return {
+        "messages": [ToolMessage(
+            content=f"[领导回复]\n{reply}", tool_call_id=call_id,
+            name="request_review")],
+    }
+
+
+def build_subagent(name, system_prompt, tools, *, max_steps=5, checkpointer=None,
+                   leader_gate=False):
     """Compile a subagent subgraph + its initial-state overrides.
 
     Returns (subgraph, init_state). The subagent config (subagent_system +
@@ -76,24 +137,43 @@ def build_subagent(name, system_prompt, tools, *, max_steps=5):
     Step 上限按 subagent 工作负担显式设置（SubagentSpec.max_steps）：subagent
     都是单任务窄工具面（arxiv 检索 / ingest 入库），一般 1~5 步足够，默认保持
     5；父 agent 的复杂编排走 state.max_steps（默认 30）。
+
+    checkpointer: 共享 checkpointer → worker 状态按 thread 持久化（supervisor 派
+    发模式使用：thread_id = task_id = 子 agent 自己的状态栈，见领导-部门制）。
+    None（默认）→ 现有同步一次性子图，行为不变。
+
+    leader_gate: True → 挂 gate 节点 + request_review 工具，worker 需要在领导输入
+    时 interrupt 暂停（supervisor.resume 续跑），见 request_review/_gate_node。
+    默认 False，路径零变化。
     """
+    # 节点名与父层 react 循环(search_loop 外的 "agent"/"tools")区分开:
+    # "subagent_agent"/"subagent_tools" 让 SSE 端(web/api/routers/agent.py 的
+    # _msg_pump)能按 langgraph_node 排除 subagent 内部消息——subagent 叶子工具的
+    # 卡片唯一权威来源是 as_tool._call 边界 + ToolDispatcher(scope 嵌套),若沿用
+    # "agent"/"tools" 会与父循环同名 → 同一调用被双发射、前端树重复挂卡。
     sg = StateGraph(AgentState)
-    sg.add_node("agent", agent_node)
-    sg.add_node("tools", build_tools_node(tools))
+    sg.add_node("subagent_agent", agent_node)
+    sg.add_node("subagent_tools", build_tools_node(tools))
     sg.add_node("synthesize", _subagent_synthesize)
-    sg.set_entry_point("agent")
-    sg.add_conditional_edges(
-        "agent", after_agent,
-        {"tools": "tools", "synthesize": "synthesize", "end": END},
-    )
-    sg.add_edge("tools", "agent")
+    sg.set_entry_point("subagent_agent")
+
+    edge_map = {"tools": "subagent_tools", "synthesize": "synthesize", "end": END}
+    if leader_gate:
+        sg.add_node("gate", _gate_node)
+        edge_map["gate"] = "gate"
+        sg.add_edge("gate", "subagent_agent")
+    else:
+        edge_map["gate"] = "synthesize"  # request_review 未绑定 → 不可达，仅保映射完整
+
+    sg.add_conditional_edges("subagent_agent", after_agent, edge_map)
+    sg.add_edge("subagent_tools", "subagent_agent")
     sg.add_edge("synthesize", END)
     init_state = {
         "subagent_system": system_prompt,
         "bound_tools": [t.name for t in tools],
         "max_steps": max_steps,
     }
-    return sg.compile(), init_state
+    return sg.compile(checkpointer=checkpointer), init_state
 
 
 class SubagentArgs(BaseModel):
@@ -339,7 +419,7 @@ preamble, no restated content:
 
 CODER_SYSTEM = """\
 You are the experiment/code specialist. Execute the task inside an experiment project
-under web/workspace/experiments/<project>. The task is self-contained (zero-state).
+under the configured experiments root / <project>. The task is self-contained (zero-state).
 
 Toolset (all you may call):
 - run_experiment(project, command, name): run a command in that project as a
@@ -432,7 +512,7 @@ SUBAGENTS: list[SubagentSpec] = [
         name="coder",
         description=(
             "Run experiments and improve code inside an experiment project "
-            "(web/workspace/experiments/<project>): run commands in the background, "
+            "(configured experiments root / <project>): run commands in the background, "
             "poll metrics, delegate code changes to the external coding agent, "
             "follow git versioning, read the study knowledge base for baselines. "
             "Use for 复现/跑实验/调参/优化代码/读指标 requests."
@@ -453,12 +533,14 @@ SUBAGENTS: list[SubagentSpec] = [
 SUBAGENT_NAMES = {s.name for s in SUBAGENTS}
 
 
-def build_subagents(tools: dict | None = None):
+def build_subagents(tools: dict | None = None, checkpointer=None):
     """Build subagents from the SUBAGENTS config table.
 
     Args:
         tools: {tool_name: BaseTool} registry. Defaults to get_cached_tools()
             (kept for backward compatibility with tests that monkeypatch it).
+        checkpointer: 透传给 build_subagent（supervisor 派发模式挂载；现有同步
+            用途不传 → 一次性子图，行为不变）。
 
     Tools not present in `tools` are silently skipped; a subagent whose whole
     toolset is missing is omitted.
@@ -480,7 +562,7 @@ def build_subagents(tools: dict | None = None):
         max_steps = cfg.max_steps if cfg else spec.max_steps
         subgraph, init_state = build_subagent(
             spec.name, spec.system_prompt, toolset,
-            max_steps=max_steps,
+            max_steps=max_steps, checkpointer=checkpointer,
         )
         out.append(as_tool(spec.name, subgraph, spec.description,
                            init_state=init_state))

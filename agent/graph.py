@@ -37,12 +37,13 @@ from .nodes import (
     synthesize_node,
     chat_node,
     clarify_node,
+    task_node,
     route_intent,
     domain_node,
 )
 from .resolution import resolve_node
 from .search_loop import build_search_subgraph
-from .plan import plan_node, executor_node, decide_mode
+from .plan import plan_node, executor_node, verify_node, decide_mode
 from .tools import ensure_tools
 
 # ---- graph construction ----
@@ -57,10 +58,12 @@ def build_graph():
 
     Flow:
         START → understand → memory → route_intent
-          ├─ literature_search → resolve → mode decision (decide_mode)
+          ├─ literature_search → resolve → mode decision (decide_mode,
+          │       requested_mode 客户端覆盖优先)
           │       ├─ react → search (subgraph) → synthesize → END
-          │       └─ plan → plan_node → executor → synthesize → END
+          │       └─ plan → plan_node → executor → verify → synthesize → END
           ├─ general_chat → chat → END
+          ├─ task_query → task (监督台：任务进度/详情，直达 task_registry) → END
           └─ needs_clarify / low confidence → clarify → END
 
     Search subgraph (agent/search_loop.py):
@@ -80,9 +83,11 @@ def build_graph():
     w.add_node("search", build_search_subgraph())
     w.add_node("plan", plan_node)
     w.add_node("executor", executor_node)
+    w.add_node("verify", verify_node)
     w.add_node("synthesize", synthesize_node)
     w.add_node("chat", chat_node)
     w.add_node("clarify", clarify_node)
+    w.add_node("task", task_node)
 
     w.add_edge(START, "understand")
     w.add_edge("understand", "memory")
@@ -90,7 +95,8 @@ def build_graph():
     w.add_conditional_edges(
         "memory",
         route_intent,
-        {"resolve": "resolve", "chat": "chat", "clarify": "clarify"},
+        {"resolve": "resolve", "chat": "chat", "clarify": "clarify",
+         "task": "task"},
     )
 
     # 领域分流（v10）：决定 plan 通道的领域导向（paper/creation/coding），
@@ -105,10 +111,12 @@ def build_graph():
     )
     w.add_edge("search", "synthesize")
     w.add_edge("plan", "executor")
-    w.add_edge("executor", "synthesize")
+    w.add_edge("executor", "verify")
+    w.add_edge("verify", "synthesize")
     w.add_edge("synthesize", END)
     w.add_edge("chat", END)
     w.add_edge("clarify", END)
+    w.add_edge("task", END)
 
     return w
 
@@ -151,8 +159,13 @@ async def get_agent():
         # ensure tools are assembled before graph build
         # (search subgraph reads tools at build time)
         await ensure_tools()
+        saver = await _get_checkpointer()
+        # 领导-部门制：派发器挂共享 checkpointer → 子 agent 以 thread_id=task_id
+        # 落同一 checkpoints.db（状态栈按 task 持久化，可 get_state/续跑）。
+        from .supervisor import init_supervisor
+        init_supervisor(saver)
         graph = build_graph()
-        _agent = graph.compile(checkpointer=await _get_checkpointer())
+        _agent = graph.compile(checkpointer=saver)
     return _agent
 
 

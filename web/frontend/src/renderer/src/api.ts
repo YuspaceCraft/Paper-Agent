@@ -4,7 +4,7 @@
  * ponytail: thin fetch wrappers, no axios. SSE via ReadableStream (supports POST).
  */
 
-import type { PlanStep, BackgroundTask } from './state';
+import type { PlanStep, BackgroundTask, AgentMode } from './state';
 
 // Base URL for the FastAPI backend. In the Electron desktop client the main
 // process spawns uvicorn on 127.0.0.1:8001 and App.tsx calls setBaseUrl() once
@@ -70,14 +70,29 @@ export type SSEEvent =
   | { type: 'token'; content: string }
   | { type: 'tool_start'; id: string; name: string; args?: Record<string, unknown>; parent_id?: string; kind?: 'subagent' | 'tool' }
   | { type: 'tool_end'; id: string; name: string; status: string; result?: string; execution_time?: number | null }
-  | { type: 'plan'; steps: Array<{ id: string; description: string; target: string; depends_on?: string[] }> }
+  | { type: 'mode'; mode: 'react' | 'plan'; source: 'user' | 'auto' }
+  | { type: 'plan'; steps: Array<{ id: string; description: string; target: string; depends_on?: string[]; status?: string }> }
+  | { type: 'plan_step'; id: string; status: string; name?: string; description?: string; output?: string }
+  | { type: 'plan_progress'; done: number; total: number }
+  | { type: 'plan_verify'; status: string; done: number; total: number; outstanding: Array<{ id: string; description: string; reason: string }> }
   | { type: 'done' }
   | { type: 'error'; message: string };
+
+export interface PlanVerdict {
+  status: string;
+  done: number;
+  total: number;
+  outstanding: Array<{ id: string; description: string; reason: string }>;
+}
 
 export interface SSECallbacks {
   onToolStart?: (id: string, name: string, args?: Record<string, unknown>, parentId?: string, kind?: 'subagent' | 'tool') => void;
   onToolEnd?: (id: string, status: string, result?: string, executionTime?: number, name?: string) => void;
+  onMode?: (mode: 'react' | 'plan', source: 'user' | 'auto') => void;
   onPlan?: (steps: PlanStep[]) => void;
+  onPlanStep?: (id: string, status: PlanStep['status'], output?: string) => void;
+  onPlanProgress?: (done: number, total: number) => void;
+  onPlanVerify?: (verdict: PlanVerdict) => void;
   onToken?: (content: string) => void;
   onDone?: () => void;
   onError?: (message: string) => void;
@@ -86,6 +101,7 @@ export interface SSECallbacks {
 export function streamChat(
   query: string,
   threadId: string,
+  mode: AgentMode,
   callbacks: SSECallbacks,
 ): AbortController {
   const controller = new AbortController();
@@ -93,7 +109,7 @@ export function streamChat(
   fetch(withBase('/api/agent/chat/stream'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, thread_id: threadId }),
+    body: JSON.stringify({ query, thread_id: threadId, mode }),
     signal: controller.signal,
   })
     .then(async (response) => {
@@ -135,8 +151,26 @@ export function streamChat(
                   case 'tool_end':
                     callbacks.onToolEnd?.(event.id, event.status, event.result, event.execution_time ?? undefined, event.name);
                     break;
+                  case 'mode':
+                    callbacks.onMode?.(event.mode, event.source);
+                    break;
                   case 'plan':
-                    callbacks.onPlan?.(event.steps.map(s => ({ id: s.id, description: s.description, target: s.target })));
+                    callbacks.onPlan?.(event.steps.map(s => ({
+                      id: s.id,
+                      description: s.description,
+                      target: s.target,
+                      depends_on: s.depends_on,
+                      status: (s.status as PlanStep['status'] | undefined) ?? 'pending',
+                    })));
+                    break;
+                  case 'plan_step':
+                    callbacks.onPlanStep?.(event.id, (event.status as PlanStep['status']) ?? 'pending', event.output);
+                    break;
+                  case 'plan_progress':
+                    callbacks.onPlanProgress?.(event.done, event.total);
+                    break;
+                  case 'plan_verify':
+                    callbacks.onPlanVerify?.({ status: event.status, done: event.done, total: event.total, outstanding: event.outstanding });
                     break;
                   case 'token':
                     callbacks.onToken?.(event.content);
@@ -286,14 +320,24 @@ export const api = {
   getAgentHealth: () => get<{ status: string; model: string; tools: number }>('/api/agent/health'),
   getIndexStats: () => get<{ backend: string; collection_name: string; count: number }>('/api/index/stats'),
 
-  // Workspace file explorer
-  listWorkspace: (path = '.') =>
+  // Workspace file explorer (root 决定基准根: project=文献问答+写作, experiments=实验)
+  listWorkspace: (path = '.', root: WorkspaceRoot = 'project') =>
     get<{ ok: boolean; data: { path: string; entries: Array<{ name: string; is_dir: boolean; size: number | null }> } }>(
-      `/api/workspace/list?path=${encodeURIComponent(path)}`
+      `/api/workspace/list?path=${encodeURIComponent(path)}&root=${root}`
     ),
-  readWorkspaceFile: (path: string) =>
+  readWorkspaceFile: (path: string, root: WorkspaceRoot = 'project') =>
     get<{ ok: boolean; data: { path: string; is_binary: boolean; content: string } }>(
-      `/api/workspace/read?path=${encodeURIComponent(path)}`
+      `/api/workspace/read?path=${encodeURIComponent(path)}&root=${root}`
+    ),
+
+  // ---- Path settings（可配置项目路径 / 实验根，v10 界面）----
+  getSettings: () => get<Settings>('/api/settings'),
+  updateSettings: (body: { project_path?: string | null; experiments_path?: string | null }) =>
+    put<Settings>('/api/settings', body),
+  /** 只读目录浏览（路径选择器用）：空 path → 盘符列表；否则该目录的子目录。 */
+  browseDir: (path = '') =>
+    get<{ ok: boolean; data: { path: string; entries: Array<{ name: string; is_dir: boolean }> } }>(
+      `/api/workspace/browse?path=${encodeURIComponent(path)}`
     ),
 
   // Upload (multipart — no JSON content-type)
@@ -403,6 +447,21 @@ export interface CreationDoc {
   sections_content: Record<string, string>;
   assembled_md: string;
   updated_at: string;
+}
+
+// ---- Workspace path settings (v10 / 可配置项目路径) ----
+
+export type WorkspaceRoot = 'project' | 'experiments';
+
+export interface Settings {
+  /** None = 未显式设置（文献问答根=代码根，写作目录=web/workspace/docs）。 */
+  project_path: string | null;
+  /** 文献问答/通用工具实际根（未设置时=代码根）。 */
+  project_root: string;
+  /** 实验根（独立于文献问答，默认 web/workspace/experiments）。 */
+  experiments_path: string;
+  /** 写作文档保存目录（project_path 设置时 = {project_path}/writing）。 */
+  writing_dir: string;
 }
 
 // ---- Experiment types (v10 / Phase D) ----

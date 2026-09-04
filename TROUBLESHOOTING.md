@@ -197,6 +197,20 @@ shutil.rmtree(path, ignore_errors=True)
 
 ---
 
+### Windows Git Bash + curl 传单引号 JSON body → FastAPI "There was an error parsing the body"
+
+**现象**: `curl -X POST ... -d '{"title":"..."}'` 返回 400 `{"detail":"There was an error parsing the body"}`；同样的命令在 Linux 下正常。
+
+**原因**: Windows 上 curl 是原生 exe，Git Bash 单引号参数内的 `{`/`"` 处理与 POSIX shell 不一致，body 被破坏。
+
+**解决**: 把 JSON 写入临时文件后用 `-d @file.json`（文件可含中文转义 `\uXXXX`）：
+```bash
+printf '{"title":"路径"}' > body.json
+curl -s -X POST http://127.0.0.1:8000/api/... -H 'Content-Type: application/json' -d @body.json
+```
+
+---
+
 ### HuggingFace Hub 下载卡住
 
 **现象**: 模型加载或 `from_pretrained()` 长时间无响应。
@@ -475,3 +489,88 @@ tracing_is_enabled()  # 期望 True
 关联清理（同一次排查，见 `docs/INFO_FLOW_REVIEW.md`）：P3 subagent 返回提取只取「无 tool_calls 的 AI 消息」；P2 删除 `_resolved_ctx` contextvar 隐藏通道；P4 plan executor 对直接工具步骤做确定性错误恢复（transient 原参数重试 / param_error 按 `available_papers|sections` 修正）；P6 工具结果信封统一收敛到 `agent/tool_contract.py`（`ok/err/parse_tool_result/truncate_tool_result`，`_salvage_tool_content`/`_classify_tool_error`/`plan._ingest_guard` 三个解析点共用）。
 
 回归：`agent/tests/test_info_flow.py`（P1 marker 正则/剥离/前缀判定 + P6 envelope 生成/解析/截断保解析性）。
+
+---
+
+## agent/supervisor / AsyncSqliteStore 事务嵌套（cannot start a transaction）
+
+**现象**: `agent/supervisor.py::_get_store` 初始化 `AsyncSqliteStore` 后，`aput/aget/asearch` 全部抛
+`OperationalError: cannot start a transaction within a transaction`（探针定位：`setup()` 正常，首次读写即炸；进程不退出还伴随
+`Task was destroyed but it is pending` 告警）。
+
+**原因**: langgraph `AsyncSqliteStore` 自身管理 `BEGIN/COMMIT`，而 `aiosqlite.connect(db)` 默认
+`isolation_level` 也自动开启事务——两层事务重叠。`AsyncSqliteSaver`（checkpoints.db）没这个问题，
+说明 saver 事务模型不同，不能沿用同样的 connect 写法。
+
+**解决**: 连接用 autocommit 模式，把事务完全交给 store 自己管理：
+`_store_conn = await aiosqlite.connect(str(TASK_STORE_DB), isolation_level=None)`。
+同仓库两个 SQLite 后端——saver 用默认 connect、store 必须 `isolation_level=None`——别复制错了。
+（另注：该环境 `AsyncSqliteStore.aclose()` 会挂起（与 `__del__` 报 `no attribute '_task'` 同源兼容问题），
+清理直接关 `_store_conn` 即可。）
+
+---
+
+## agent/supervisor / interrupt 抛 "Called get_config outside of a runnable context"
+
+**现象**: worker 调 `request_review` 后路由到 `gate` 节点，`interrupt()` 抛
+`RuntimeError: Called get_config outside of a runnable context`；`tasks`/`Command(resume)` 链路全部失效。
+
+**原因**: `interrupt()` 依赖 `get_config()`（读 `var_child_runnable_config` contextvar）。
+**Python 3.10 + async 节点下 LangGraph 不注入该 contextvar**（langgraph.config.get_config 的
+`sys.version_info < (3,11)` 守卫 + `asyncio.current_task()` 分支），与仓库 stream.py 记录的
+`get_stream_writer` 限制同根（Py<3.11 async 节点 contextvar 传播缺失）。
+
+**解决**: gate 节点内手动把节点拿到的 `config` 桥进 contextvar（绕过硬限制，与 stream.py 自建队列同思路）：
+
+```python
+from langchain_core.runnables.config import var_child_runnable_config
+_tok = var_child_runnable_config.set(config if isinstance(config, dict) else {})
+try:
+    reply = interrupt({"question": question})
+finally:
+    var_child_runnable_config.reset(_tok)
+```
+
+验证：`agent/tests/_probe`（已删）与 `test_supervisor.py::test_interrupt_resume`——interrupt 后
+`aget_state().tasks` 非空、`next==('gate',)`、`Command(resume=...)` 续跑产出终答。
+
+## agent / SubAgent 重复调用工具 & 客户端树混乱（plan 模式）
+
+**现象**: plan 模式提问「搜索一篇 agent 的论文并存入本地知识库」时，subagent（arxiv/ingest）
+对相同 query / 相同入库请求反复调工具；同一叶子工具（如 `arxiv__search_papers`）在聊天区
+渲染出两张卡片——一张顶层孤儿卡 + 一张挂在 subagent 边界下的嵌套卡，卡片 id 撞车导致
+永久转圈 / React 同 key 冲突。
+
+**原因**:
+
+1. **无调用去重**: 父 react 循环与各 subagent 共用 `build_tools_node`，对每条 graph 级
+   AI message 的 `tool_call` **无条件执行**，无 (name, args) 级去重；`agent/config.yaml`
+   曾把所有 subagent 的 `max_steps` 都放宽到 30。于是 arxiv subagent 可拿同一 query 重搜
+   约 30 轮；`_run_step_agent`（预算 `plan_step_max_steps`=10）可重复调 `ingest` 子代理，
+   每次触发 `POST /api/agent/ingest` **新建一个后台入库任务**，任务堆叠。
+2. **双发射（树混乱主因）**: subagent 子图与父 react 搜索循环的 agent/tools 节点**同名
+   （"agent"/"tools"）**。`_msg_pump` 按 `langgraph_node=="agent"` 发 `tool_start`，把
+   subagent 内部的叶子工具（工具名不在 `SUBAGENT_NAMES`）也当成父层调用发成**顶层孤儿卡**；
+   同一调用又被 `ToolDispatcher` 按 scope 发一张 `parent_id=run_id` 的**嵌套卡**。一条调用
+   两次完整 `tool_start`/`tool_end` → 树里出现重复、错层节点。
+3. **id 碰撞 + 前端无去重**: `_run_step_agent` 用 `tc.id or tc.name` 做卡片 id（同名工具多次
+   调用 → id 撞车，`patchStep` 只补第一张）；executor 确定式重试复用 `step_id` 重发
+   `tool_start`；前端 `insertStep` 无按 id 去重，且父卡未到达时子步骤被静默挂到顶层。
+
+**解决**:
+
+1. subagent 子图节点改名为 `subagent_agent`/`subagent_tools`（`agent/subagents.py` 的
+   `_build_subgraph`，含 entry/conditional edges/gate 同步），`_msg_pump` 的
+   `node=="agent"/"tools"` 过滤只命中父层 react 循环；`web/api/routers/agent.py` ToolMessage
+   分支补 `node != "tools"` 守卫 —— 恢复「`as_tool._call` 是 subagent 边界唯一权威发出者」。
+2. `build_tools_node` 按 (name, canonical_args) 建 `tool_result_cache`（`AgentState`
+   新增 `tool_result_cache` 字段）:单轮内相同调用直接复用上次**成功**结果、不重新执行副作用
+   （重搜/重复入库）；错误信封不缓存、保留恢复路径。`_run_step_agent` 再加步骤级同名缓存。
+3. `_run_step_agent` 卡片 id 随机兜底（`tc.id or f"{name}-{hex6}"`）消除碰撞;subagent 工具
+   不再手动 emit（边界卡唯一,与 `_run_step` 对齐）。
+4. config.yaml 按角色收紧 `max_steps`: arxiv 8 / ingest 6 / coder 15 / creator 30。
+5. `agent_ingest` 派发前复用同 paper_name 的 running/pending 任务,不再堆叠任务行。
+6. 前端 `insertStep` 按 id 幂等去重 + 乱序重挂（父卡到达时吸收顶层待定子步骤）。
+
+验证: `pytest agent/tests` 不回归; POST `/api/agent/chat/stream` 复现原问题,断言任一叶子
+工具只出现一次且带 `parent_id`; 前端 dev 模式无 React duplicate key 警告。

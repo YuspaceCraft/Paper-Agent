@@ -2,13 +2,14 @@
  * MessageList.tsx — scrollable conversation, CowAgent-style bubbles.
  *
  * Assistant turns show collapsible tool steps above a markdown answer; user
- * turns are accent-filled right-aligned bubbles.
+ * turns are accent-filled right-aligned bubbles. Plan mode additionally renders
+ * a live TODO checklist (per-step status) + progress + verification banner.
  */
 
-import { type FC, useEffect, useRef } from 'react';
-import type { Message } from '../state';
+import { type FC, type ReactNode, useEffect, useRef } from 'react';
+import type { Message, PlanStep } from '../state';
 import { Markdown } from './Markdown';
-import { MessageSteps, labelFor } from './MessageSteps';
+import { MessageSteps } from './MessageSteps';
 
 interface Props {
   messages: Message[];
@@ -24,15 +25,131 @@ const SUGGESTIONS = [
   { icon: '💡', title: '概念解释', sub: '领域基础知识', prompt: '解释向量数据库的倒排索引与向量索引原理' },
 ];
 
-// Plan summary — one muted line of numbered step chips above the step cards.
-const planSummaryStyle: React.CSSProperties = {
-  display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center',
-  fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 6,
+// ---- plan TODO checklist ----
+
+const PLAN_STATUS_META: Record<NonNullable<PlanStep['status']>, { icon: ReactNode; color: string }> = {
+  pending: { icon: <span style={{ opacity: 0.45 }}>○</span>, color: 'var(--color-text-secondary)' },
+  running: { icon: <span className="step-spinner" />, color: 'var(--color-primary)' },
+  done: { icon: <span style={{ color: 'var(--color-success)' }}>✓</span>, color: 'var(--color-success)' },
+  failed: { icon: <span style={{ color: 'var(--color-danger)' }}>✗</span>, color: 'var(--color-danger)' },
+  skipped: { icon: <span style={{ opacity: 0.45 }}>⊘</span>, color: 'var(--color-text-secondary)' },
 };
-const planChipStyle: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  padding: '1px 8px', borderRadius: 10,
-  background: 'var(--color-inset)', border: '1px solid var(--color-border)',
+
+const planHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  fontSize: 11,
+  color: 'var(--color-text-secondary)',
+  marginBottom: 4,
+};
+
+const planTodoStyle: React.CSSProperties = {
+  margin: '4px 0 8px',
+  padding: '6px 9px',
+  borderRadius: 6,
+  background: 'var(--color-inset)',
+  border: '1px solid var(--color-border)',
+  fontSize: 12,
+  lineHeight: 1.5,
+};
+
+const planRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 7,
+  padding: '2px 0',
+  color: 'var(--color-text-secondary)',
+};
+
+const PlanTodo: FC<{ plan: PlanStep[]; progress?: { done: number; total: number } | null }> = ({ plan, progress }) => {
+  if (!plan || plan.length === 0) return null;
+  const total = progress?.total ?? plan.length;
+  const done = progress?.done ?? plan.filter(s => s.status === 'done' || s.status === 'skipped').length;
+  return (
+    <div style={planTodoStyle}>
+      <div style={planHeaderStyle}>
+        <span style={{ opacity: 0.6, fontWeight: 600 }}>🧩 计划</span>
+        {total > 0 && (
+          <span style={{ opacity: 0.7 }}>
+            已执行 {done}/{total} 步
+          </span>
+        )}
+      </div>
+      {plan.map((s, i) => {
+        const meta = PLAN_STATUS_META[s.status ?? 'pending'];
+        return (
+          <div key={s.id} style={{ ...planRowStyle, color: meta.color }}>
+            <span style={{ flexShrink: 0, width: 14, display: 'inline-flex', justifyContent: 'center' }}>{meta.icon}</span>
+            <span style={{ flexShrink: 0, opacity: 0.55 }}>{i + 1}.</span>
+            <span style={{ flex: 1 }} title={s.status === 'skipped' ? s.output : undefined}>
+              {s.description}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// ---- verification banner ----
+
+const VERIFY_META: Record<string, { label: string; fg: string; bg: string }> = {
+  satisfied: { label: '验证通过：计划步骤全部完成', fg: 'var(--color-success)', bg: 'rgba(46,160,67,0.10)' },
+  partial: { label: '部分完成：仍有步骤未达成', fg: '#b58914', bg: 'rgba(219,171,9,0.12)' },
+  failed: { label: '有步骤失败，未能完整回答', fg: 'var(--color-danger)', bg: 'rgba(197,48,48,0.10)' },
+  no_evidence: { label: '无可用执行结果', fg: 'var(--color-text-secondary)', bg: 'rgba(120,120,120,0.10)' },
+};
+
+const verifyBannerStyle: React.CSSProperties = {
+  margin: '4px 0 8px',
+  padding: '6px 9px',
+  borderRadius: 6,
+  border: '1px solid var(--color-border)',
+  fontSize: 12,
+  lineHeight: 1.5,
+};
+
+const VerifyBanner: FC<{ verify: Message['verify'] }> = ({ verify }) => {
+  if (!verify) return null;
+  const meta = VERIFY_META[verify.status] ?? VERIFY_META.no_evidence;
+  return (
+    <div style={{ ...verifyBannerStyle, background: meta.bg, color: meta.fg }}>
+      <div style={{ fontWeight: 600 }}>
+        {verify.status === 'satisfied' ? '✅ ' : verify.status === 'failed' ? '❌ ' : '⚠️ '}
+        {meta.label}
+      </div>
+      {verify.outstanding && verify.outstanding.length > 0 && (
+        <div style={{ marginTop: 3, opacity: 0.9 }}>
+          {verify.outstanding.map(o => (
+            <div key={o.id || o.description} style={{ display: 'flex', gap: 6 }}>
+              <span style={{ flexShrink: 0 }}>·</span>
+              <span>
+                <strong>{o.description || o.id}</strong>
+                {o.reason ? ` — ${o.reason}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ---- mode badge ----
+
+const modeBadgeStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 3,
+  fontSize: 10,
+  fontWeight: 600,
+  padding: '1px 8px',
+  borderRadius: 10,
+  marginBottom: 5,
+  background: 'var(--color-inset)',
+  border: '1px solid var(--color-border)',
+  color: 'var(--color-text-secondary)',
 };
 
 export const MessageList: FC<Props> = ({ messages, onSuggestion }) => {
@@ -81,20 +198,13 @@ export const MessageList: FC<Props> = ({ messages, onSuggestion }) => {
           <div key={m.id} className="msg-row msg-row-assistant">
             <div className="msg-avatar">🤖</div>
             <div className="bubble-assistant">
-              {m.plan && m.plan.length > 0 && (
-                <div style={planSummaryStyle}>
-                  <span style={{ opacity: 0.6 }}>计划</span>
-                  {m.plan.map((s, i) => (
-                    <span key={s.id} style={planChipStyle} title={s.description}>
-                      <span style={{ opacity: 0.5 }}>{i + 1}.</span>
-                      {labelFor(s.target)}
-                      <span style={{ opacity: 0.75 }}>
-                        {s.description.length > 24 ? s.description.slice(0, 24) + '…' : s.description}
-                      </span>
-                    </span>
-                  ))}
+              {m.mode && (
+                <div style={modeBadgeStyle}>
+                  {m.mode === 'plan' ? '🧩 Plan' : '⚡ ReAct'}
                 </div>
               )}
+              <PlanTodo plan={m.plan ?? []} progress={m.planProgress ?? null} />
+              <VerifyBanner verify={m.verify ?? null} />
               {hasSteps && (
                 <div className="bubble-steps">
                   <MessageSteps steps={m.steps!} />

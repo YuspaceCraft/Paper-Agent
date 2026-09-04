@@ -9,6 +9,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, whenBackendReady, type Experiment } from '../api';
+import { ProjectPathPicker } from './ProjectPathPicker';
+
+interface PathPatch { project_path?: string | null; experiments_path?: string | null }
+interface Props {
+  experimentsPath?: string;
+  onUpdatePaths?: (patch: PathPatch) => void;
+}
 
 const toolbarStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10,
@@ -56,7 +63,8 @@ function MetricSparkline({ values }: { values: number[] }) {
   );
 }
 
-export function ExperimentView() {
+export function ExperimentView({ experimentsPath, onUpdatePaths }: Props) {
+  const [pathPickerOpen, setPathPickerOpen] = useState(false);
   const [projects, setProjects] = useState<string[]>([]);
   const [project, setProject] = useState('');
   const [exps, setExps] = useState<Experiment[]>([]);
@@ -92,6 +100,16 @@ export function ExperimentView() {
 
   useEffect(() => { void refreshProjects(); }, [refreshProjects]);
 
+  // 实验根切换 → 项目/实验列表重拉（独立于文献问答根）
+  useEffect(() => {
+    if (experimentsPath !== undefined) void refreshProjects();
+  }, [experimentsPath, refreshProjects]);
+
+  const handlePickExperimentsRoot = useCallback((p: string) => {
+    onUpdatePaths?.({ experiments_path: p || null });
+    setPathPickerOpen(false);
+  }, [onUpdatePaths]);
+
   // 项目变化 → 加载实验 + git
   useEffect(() => {
     if (!project) { setExps([]); setExpId(null); return; }
@@ -114,7 +132,7 @@ export function ExperimentView() {
   useEffect(() => {
     if (!project) return;
     const timer = setInterval(() => {
-      void api.listExperiments(project).then(setExps).catch(() => {});
+      void api.listExperiments(project).then(r => setExps(r.experiments)).catch(() => {});
       if (expId) void api.getExperiment(expId).then(setExp).catch(() => {});
       if (gitOpen) void refreshGit();
     }, 3000);
@@ -143,13 +161,31 @@ export function ExperimentView() {
     finally { setBusy(false); }
   }, [cmd, runName, project]);
 
-  const activeExp = exps.find(e => e.exp_id === expId) ?? exp;
+  // 防御：exps 理论上是数组；历史曾收到非数组（轮询 setExps 误传整响应）导致 exps.find 崩溃
+  const expsList = Array.isArray(exps) ? exps : [];
+  const activeExp = expsList.find(e => e.exp_id === expId) ?? exp;
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* 工具条 */}
       <div style={toolbarStyle}>
         <span style={{ fontWeight: 700, fontSize: 14 }}>🧪 实验</span>
+        <button
+          style={btnStyle}
+          onClick={() => setPathPickerOpen(o => !o)}
+          title="实验根目录（独立于文献问答），选择不同路径查看不同项目的实验"
+        >
+          📁 {experimentsPath || '…'}
+        </button>
+        {pathPickerOpen && (
+          <ProjectPathPicker
+            label="实验根目录"
+            hint="实验记录与项目列表所在根；与文献问答根独立"
+            value={experimentsPath ?? ''}
+            onPick={handlePickExperimentsRoot}
+            onClose={() => setPathPickerOpen(false)}
+          />
+        )}
         <select
           value={project}
           onChange={e => setProject(e.target.value)}
@@ -195,13 +231,13 @@ export function ExperimentView() {
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* 左：实验列表 */}
         <div style={{ display: 'flex', flexDirection: 'column', width: 250, flexShrink: 0, borderRight: '1px solid var(--color-border)', overflow: 'hidden' }}>
-          <div style={colTitle}>实验（{exps.length}）</div>
+          <div style={colTitle}>实验（{expsList.length}）</div>
           <div style={{ flex: 1, overflow: 'auto', padding: 6 }}>
-            {!project || exps.length === 0 ? (
+            {!project || expsList.length === 0 ? (
               <div style={{ padding: 12, fontSize: 12, color: 'var(--color-text-tertiary)' }}>
                 暂无实验。选择项目或用「▶ Run」输入命令启动一个后台实验。
               </div>
-            ) : exps.map(e => (
+            ) : expsList.map(e => (
               <div
                 key={e.exp_id}
                 onClick={() => setExpId(e.exp_id)}

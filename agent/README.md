@@ -27,7 +27,7 @@ route_intent (pure function, no LLM)
     │       ├── react (simple query, zero regression)
     │       │       ▼
     │       │   search (subgraph: agent ↔ tools ReAct loop)
-    │       │       │
+    │       │       │  长任务可用 task_dispatch 分发 → 报 task_id 结束回合
     │       │       ▼
     │       │   synthesize → User
     │       │
@@ -43,6 +43,8 @@ route_intent (pure function, no LLM)
     │           synthesize (merge subagent_results) → User
     │
     ├── general_chat → chat → User  (lightweight, no tools)
+    │
+    ├── task_query → task (v12 监督台：派发任务/实验/写作/后台任务进度 → registry) → User
     │
     └── needs_clarify / low confidence → clarify → User
 ```
@@ -80,7 +82,7 @@ after_agent (pure function)
 
 对照 [docs/agent-multiagent-plan.md](../docs/agent-multiagent-plan.md) 执行。不改单 agent 主干，在其上叠两层：
 
-- **Plan 范式（Phase 7）**：`plan.py` 的 `decide_mode`（纯启发式，无 LLM：对比关键词 / ≥2 子问题 / **resolve 确证 ≥2 篇论文**）+ `plan_node`（LLM 直接输出 JSON 步骤表，`_ask_for_plan` 解析）+ `executor_node`（拓扑序执行，无依赖步骤 `asyncio.gather` 并行）。多论文对比 / 多子问题走 plan，简单查询走 react（零回归）。
+- **Plan 范式（Phase 7 / v14 LLM 逐步执行）**：`plan.py` 的 `decide_mode`（纯启发式，无 LLM：对比关键词 / ≥2 子问题 / **resolve 确证 ≥2 篇论文**；`requested_mode` 客户端覆盖优先）+ `plan_node`（LLM 直接输出 JSON 步骤表，`_ask_for_plan` 解析）+ `executor_node`（拓扑序**顺序执行**，v14：`target:"auto"` 步骤走 `_run_step_agent` LLM 逐步执行、`tool`/subagent 步骤走确定性 `_run_step`）+ **`verify_node`（计划完成验证，报告式）**。多论文对比 / 多子问题走 plan，简单查询走 react（零回归）。
 - **Multi-Agent（Phase 8，Claude Code 模式）**：`subagents.py` 新增 `build_subagent`（编译子图：复用 `agent_node`/`ToolNode`/`after_agent`，仅改受限工具集 + 专属 prompt + 独立上下文）+ `as_tool`（把子图包装成父层可调工具，父层只见「任务 → 摘要」，看不到子 agent 内部正文）。**库只读工具归父 agent，2 个写/外网 subagent（arxiv/ingest）** 通过声明式配置表 `SUBAGENTS` 加入父层工具列表。
 
 ### 模式判定（代码启发式，无额外 LLM 调用）
@@ -89,6 +91,8 @@ after_agent (pure function)
 - **resolve 确证 ≥ 2 篇不同论文**（`resolved.papers` 中 level ∈ {EXACT, HIGH, MEDIUM} 的 match 去重计数）。判定只看「消解层真的把名字匹配到了库里已知论文」，不看 entities 词袋 —— 任务载体/指代词（入库/下载/该论文/向量数据库…）天然匹配不到论文，自动被排除，无需黑名单；
 - 含对比/多跳关键词（对比/compare/vs/versus/区别/哪个更好/综述/survey）；
 - 问句含两个以上 `？` 或 `?`。
+
+**客户端显式覆盖优先**：`state.requested_mode`（`auto`/`react`/`plan`，经 input 随 `AgentChatRequest.mode` 透传）非 `auto` 时直接采用，不跑启发式；非法值回落启发式。`decide_mode` 无论哪种都 emit `{"type":"mode", source:"user"|"auto"}`。
 
 配套：`resolve_node` 同时把 `focus_papers` 和 `entities` 当作论文候选去匹配库内论文（understand 即使把论文名放进 entities —— qwen-plus 常见行为 —— 消解层也能兜住），空匹配静默丢弃，不污染 hints。
 
@@ -106,12 +110,14 @@ after_agent (pure function)
 | `coder`（v10 Phase C） | `run_experiment`/`experiment_status`/`read_metrics`/`experiment_list` + `git_*` + `delegate_code_task` + `study_*` + `read_file`/`list_dir`/`search_papers`/`fetch_content` | 实验/编码执行：探索项目 → 跑实验（后台）→ 看指标 → 对照研究知识库基线 → 委托外部 coding agent 改代码 → git 提交。诚实汇报真实 metrics | 是（run/commit/delegate 走权限门） |
 
 - **执行契约**：`executor_node` 把 plan 步骤的自由 `args`（`query`/`action`/`arxiv_id`/…）折叠进 subagent 唯一的 `task` 字段（`_subagent_task`，渲染为 `key: value` 命令块，与 react 模式同一契约），避免自由参数名触发 pydantic「missing task」校验失败。
-- **调用逻辑守卫（executor 分支点）**：plan-and-execute 本身是无分支顺序执行，为避免「check_paper 已判定本地却仍无条件下载/入库」，`executor_node` 每次 batch 先执行 `check_paper` 步骤（TL 并行分批），再用 `_ingest_guard` 判定：`indexed` → 跳过同论文的下载/入库步骤；`downloaded_not_indexed` → 跳过 `download`/`download_and_ingest`（本地已有 PDF 不该再下载），`ingest` 放行（正是处理本地 PDF 的正确路径）；`absent` → 放行。论文身份用 `resolution.canonicalize` 双向包含匹配，结果写进 `subagent_results`（`skipped: true`）。
-- **plan 结构化输出（直接解析模型 JSON 文本，never raise）**：`PLAN_SYSTEM` 的输出契约就是「裸 JSON 对象」。`_ask_for_plan` 直接解析 `model.ainvoke` 回复中的 JSON（剥 ```json 围栏/前后缀，`_extract_json_text` + `_parse_steps` pydantic 校验，非法步骤丢弃），同时兼容 provider 偶尔发出的 function call。**不用 `with_structured_output(method="function_calling")`** —— 它只认 OpenAI tool call，qwen-plus 按 prompt 输 JSON 文本时返回 `None`，把合法 plan 静默丢掉（历史根因：plan 连续 `plan_empty_result` → 空 fallback → executor no-op → 「抱歉，未能生成回答」）。仍空才 `_fallback_plan`：**每个已解析论文一个确定性「直接 `fetch_content`」步骤**（`target="tool"`，只读、绝不触发下载/入库副作用）；无已解析论文 → 空 plan，executor no-op，synthesize 兜底回答。观测：`plan_fallback` / `plan_empty_result` / `plan_llm_failed` 事件。
+- **调用逻辑守卫（executor 分支点）**：确定性 `tool` 步骤（如 `check_paper`）先执行并作为后续入库/下载步骤的守卫依据——`_ingest_guard` 判定：`indexed` → 跳过同论文的下载/入库步骤；`downloaded_not_indexed` → 跳过 `download`（本地已有 PDF），`ingest` 放行；`absent` → 放行。论文身份用 `resolution.canonicalize` 双向包含匹配，守卫命中写进 `subagent_results`（`skipped: true`）。**auto（LLM 逐步执行）步骤不走此守卫**——入库决策梯整体移交给 step executor 的 `STEP_EXEC_SYSTEM`（见下），由执行中的 agent 先 `check_paper` 再决定动作。
+- **plan 结构化输出（直接解析模型 JSON 文本，never raise）**：paper 域 `PLAN_SYSTEM` 只输出**结果步骤**——每个 step 只有 `{"id","description","depends_on"}`（v14 起，不再绑 target/args 到单工具），目标由 `_ask_for_plan` 解析（剥 ```json 围栏/前后缀，`_extract_json_text` + `_parse_steps` pydantic 校验，缺 target 时 `PlanStep` 默认 `"auto"`）。**不用 `with_structured_output(method="function_calling")`**（qwen-plus 输 JSON 文本时返回 `None`，历史根因：plan 整单静默丢失）。仍空才 `_fallback_plan`：每个已解析论文一个确定性「直接 `fetch_content`」步骤（`target="tool"`，只读兜底）；无已解析论文 → 空 plan → synthesize 兜底回答。观测：`plan_fallback` / `plan_empty_result` / `plan_llm_failed` / `step_agent_llm_failed` 事件。
+- **LLM 逐步执行（v14，`_run_step_agent`）**：auto 步骤 = 结果单元，由 per-step agent 循环完成——`STEP_EXEC_SYSTEM` + resolved 可信论文名 + 前序步骤产出（depends_on 复用）注入 per-step 纯净对话；绑定父工具面（`_get_bound_model`），循环内模型动态选择并**多次调用工具**（每次 emit `tool_start`/`tool_end` 成父层工具卡片），无 tool_calls 的文本即该步答案（成为 synthesize 证据）。轮次上限 `plan_step_max_steps`（config.yaml，env `AGENT_PLAN_STEP_MAX_STEPS` 覆盖，默认 10）；连续 2 次 `backend_down` 停止。一步内多工具调用 → TODO 步数与工具卡片数解耦，对齐 Claude Code / Codex「计划=步骤、执行=工具日志」。**卡片 id（v15）**：优先模型 `tool_call.id`，缺失时随机兜底（`name-hex6`），杜绝 `tc.name` 兜底的同名 id 碰撞；subagent 工具（`SUBAGENT_NAMES`）不再手动 emit，边界卡唯一（与 `_run_step` 对齐）。**步骤级去重**：步骤内相同 (name, args) 调用复用上次成功结果，不重复执行副作用。
 - **入库决策梯（三态检测）**：父 agent 对"入库/保存"请求**强制先调 `check_paper(term)`**（父级内置工具，只读/幂等）——Redis catalog 判 `indexed`（已入库）→ 文件系统扫 `data/uploads|downloads` + **`data/` 根目录裸 PDF** 判 `downloaded_not_indexed`（PDF 已在本地，matches 带 `pdf_path`）→ 都没有才 `absent`（才允许走 arxiv 子代理检索拿 `arxiv_id` 再 ingest）。数据源于 `GET /api/reader/local-papers`，匹配用 `resolution.match_local_state`（canonicalize 归一双侧磁盘命名清洗差异）。详见上方"工具列表"。
 - **下载前 arXiv 身份核验（防张冠李戴）**：`download_paper` 下载前**必须**经 `_fetch_arxiv_title` 拿到该 arXiv ID 的真实标题，拿不到（API 不可用 / ID 无效）→ 返回 `422 unverified` 中止下载，绝不盲下载（曾出现：arxiv API 挂掉时 agent 凭记忆编造 arXiv ID，下载到与所述论文不符的 PDF）。核验通过后返回数据携带 `title`，供父层/用户核对是否与所指论文一致。配套约束（`prompts.py`「事实纪律」+ `subagents.py` ARXIV_SYSTEM）：外部源不可用时禁止凭记忆重构论文身份，不得声称未实际发生的工具调用/结果。
-- **执行可视化**：`stream.py` 提供 contextvar + `asyncio.Queue` 事件通道，`plan_node`/`_run_step` 通过 `emit()` 推送 `plan`/`tool_start`/`tool_end`；`web/api/routers/agent.py` 的 `_stream()` 建队列并并发排空，让 plan 模式的分派/执行/完成全过程以 SSE 透出到前端（复用 ToolStep 卡片）。
-- **层级可视化（状态树）**：subagent 内部叶子工具调用（如 `arxiv__search_papers`）默认对父层不可见。`as_tool._call` 是 subagent 边界的**唯一权威发出者**（父层 router/executor 对 subagent 工具跳过 emit，避免重复卡片）：它生成 `run_id`、`set_scope(name, run_id)` 标记当前任务，并自 emit `tool_start`/`tool_end`；`dispatcher.call` 检测到 scope 时给叶子工具事件打 `parent_id=run_id`。前端 reducer 用 `parent_id` 维护一棵真实状态树（`ToolStep.children` 嵌套，非按名字 filter），同一 subagent 一轮内多次调用也不会串层；`MessageSteps` 递归渲染。
+- **执行可视化**：`stream.py` 提供 contextvar + `asyncio.Queue` 事件通道，`plan_node`/`_run_step`/`_run_step_agent`/`executor_node`/`verify_node` 通过 `emit()` 推送事件；`web/api/routers/agent.py` 的 `_stream()` 建队列并并发排空，让 plan 模式的分派/执行/验证/完成全过程以 SSE 透出到前端。事件集：`mode`（实际模式，source=user/auto）、`plan`（步骤表，每步带 `status:"pending"`）、`plan_step`（单步 TODO 状态 running/done/failed/skipped，含 guard-skip）、`plan_progress`（done/total）、`plan_verify`（验证报告）、`tool_start`/`tool_end`（复用 ToolStep 卡片 —— 一步内多次工具调用 → 多张卡片流式刷出）。
+- **TODO 列表 + 计划验证（v13/v14）**：`executor_node` 逐步骤顺序执行（v14 去掉 `asyncio.gather`——LLM 步骤并发会交错工具事件、并发烧 LLM）并回填 `plan[].status`（pending/running/done/failed/skipped，`_statused_plan`）持久化进 checkpoint；前端把 `plan` 渲染成**结果步骤**实时勾选清单（只显示步骤描述，不含工具名）+ 进度，工具卡片在其下方独立流式渲染。`verify_node`（executor → **verify** → synthesize）做报告式验证：确定性统计（done/failed/pending + outstanding）+ LLM 目标满足度检查（`_VERIFY_SYSTEM`，结构化 JSON 输出）；**有失败/pending 步骤时即使 LLM 判 satisfied 也钳制为 partial，绝不掩盖失败**；空 plan → `no_evidence`。creation 域跳过 LLM（写作终态由 doc_progress 报告）。`synthesize` 把未完成步骤显式带进 final answer，让模型用已有证据尽力作答。**不自动重跑**（报告式）。
+- **层级可视化（状态树）**：subagent 内部叶子工具调用（如 `arxiv__search_papers`）默认对父层不可见。`as_tool._call` 是 subagent 边界的**唯一权威发出者**（父层 router/executor 对 subagent 工具跳过 emit，避免重复卡片）：它生成 `run_id`、`set_scope(name, run_id)` 标记当前任务，并自 emit `tool_start`/`tool_end`；`dispatcher.call` 检测到 scope 时给叶子工具事件打 `parent_id=run_id`。前端 reducer 用 `parent_id` 维护一棵真实状态树（`ToolStep.children` 嵌套，非按名字 filter），同一 subagent 一轮内多次调用也不会串层；`MessageSteps` 递归渲染。**节点命名空间（v15）**：subagent 子图的 agent/tools 节点命名为 `subagent_agent`/`subagent_tools`（与父 react 循环的 `agent`/`tools` 区分），使 `_msg_pump`（web/api/routers/agent.py）按 `langgraph_node` 过滤时只命中父层 —— 消除「同一叶子调用被 `_msg_pump` 发成顶层孤儿卡、又被 dispatcher 发成嵌套卡」的双发射/错层。**调用去重**：`build_tools_node` 按 (name, canonical_args) 在 `AgentState.tool_result_cache` 内对单轮内相同调用复用上次成功结果（错误信封不缓存、保留恢复路径），父 react 循环与全部 subagent 共享受益。
 - **工具所有权（Claude Code 模式）**：父 agent 直接持有**全部本地只读工具**——库检索/阅读（`search_papers`/`fetch_content`）+ 文件三件套（`read_file`/`list_dir`/`write_file`）+ `check_paper`（入库决策梯的确定性第一步）+ `check_task_status`（后台任务栈查询，v9）+ skills。**subagent 3 个**：`arxiv`（外网，只读边界）+ `ingest`（写操作，权限门）+ `creator`（创作域写作：doc_* 工具 + 独立写作上下文，避免章节全文进入父层消息）——只读不隔离、写/外网/长上下文才隔离，避免「列库/扫描/对比」类任务被迫经 subagent 中转导致工具错配（见下「工具列表」）。
 - **Token 级流式**：LLM 节点统一走 `_stream_llm`（`model.astream` 逐 chunk `emit("token")`），`_ev_pump` 做 PII 脱敏后转发；`_msg_pump` 不重复 emit 整段 AI 消息。subagent 内部 token 由 `current_scope()` 守卫抑制，不泄漏到主层。
 - **subagent vs 工具标识**：subagent 边界事件带 `kind:"subagent"`，前端 `ToolStep.kind` 据此渲染「子代理」徽标 + 主色名，与叶子工具（默认 🔧）区分。
@@ -210,7 +216,8 @@ target="creator"）→ `_creation_plan` 里 **`_ensure_writing_doc` 建 doc + �
   `env AGENT_MAX_STEPS / AGENT_MAX_TURNS` > config.yaml > 代码默认。
   `state.py` 类属性默认值、`subagents.py::build_subagents` 都从 `get_limits()` 取值。
 
-- **数据模型**（`agent/domains/creation.py`）：`web/workspace/docs/{doc_id}/`
+- **数据模型**（`agent/domains/creation.py`）：写作根 `workspace_config.get_docs_dir()` 下的
+  `{doc_id}/`（未设置项目路径 → `web/workspace/docs/`；设置后 → `{project_path}/writing/`）
   - `doc.json` — outline（含每章 status）+ sections 进度
   - `{doc_id}.md` — 按 outline 顺序拼接的章节 markdown（docx 导出/阅读器读它）
   - `sections/{section_id}.md`、`exports/{doc_id}.docx`（python-docx 生成）
@@ -223,8 +230,10 @@ target="creator"）→ `_creation_plan` 里 **`_ensure_writing_doc` 建 doc + �
 
 编码域：`experiments | coder` subagent + 基础工具 + MCP bridge。
 
-- **数据模型**（[domains/coding.py](domains/coding.py)）：`web/workspace/experiments/{project}/`
-  项目目录（创建即用）+ `_runs/{exp_id}/` 实验快照（state.json + run.log + metrics 快照）。
+- **数据模型**（[domains/coding.py](domains/coding.py)）：实验根
+  `workspace_config.get_experiments_path()`（默认 `web/workspace/experiments`，可经
+  `/api/settings` 独立配置）下的 `{project}/` 项目目录（创建即用）+
+  `_runs/{exp_id}/` 实验快照（state.json + run.log + metrics 快照）。
   指标解析支持 `metrics.json` / `metrics.csv`（实验结束自动归档进快照 + 写入**研究知识库**）。
 - **`research_service` APIs**：`run_experiment`（后台子进程，cwd=项目目录）、
   `experiment_status`（state + log_tail + metrics）、`read_metrics`、`experiment_list`、
@@ -233,9 +242,10 @@ target="creator"）→ `_creation_plan` 里 **`_ensure_writing_doc` 建 doc + �
   工具名带 `codex`/`delegate`/`claude_code` 前缀即接入），**CLI subprocess 兜底**
   （`AGENT_CODING_CMD` 或探测 `claude`/`codex`），无后端时返回结构化错误（不 raise）。
   prompt 零状态、模型名由后端注入（CLAUDE.md 模型无关原则）。
-- **研究知识库 study**：`web/workspace/studies/{topic}/knowledge.json`（hypotheses /
-  experiments / findings）。实验记录 `_study_archive` **确定性写入**（LLM 只读引用，
-  防篡改），`study_context` 供创作/编码域注入对比基线。
+- **研究知识库 study**：`{experiments_root.parent}/studies/{topic}/knowledge.json`
+  （跟随实验根；默认 `web/workspace/studies`；hypotheses / experiments / findings）。
+  实验记录 `_study_archive` **确定性写入**（LLM 只读引用，防篡改），`study_context`
+  供创作/编码域注入对比基线。
 - **编码域 plan**：`CODING_PLAN_SYSTEM`（`plan.py::_coding_plan`）→ `coder` subagent
   执行（探索→跑实验→看指标→对照基线→委托改进→git 提交）。
 
@@ -247,6 +257,73 @@ target="creator"）→ `_creation_plan` 里 **`_ensure_writing_doc` 建 doc + �
   （含 docx 可读回）+ 路径穿越拒绝。
 
 自检：`python agent/tests/test_creation.py`
+
+## v12 领导-部门制（子任务舱运行时 supervisor）
+
+主 agent = **领导**（理解意图、编排、分发、监督、验收）；子 agent = **部门**（隔离
+运行，自持工具表 + 状态栈——执行哪个任务 ID、进行到什么程度，产出按 task_id 返回）。
+
+**LangGraph 原生组件实现，不自研图机制**：
+
+| 需求 | 组件 |
+|---|---|
+| 子 agent 隔离（自有工具/自存消息） | 现有 `subagents.build_subagent` 子图 + 独立 thread |
+| 状态栈（执行哪个任务、到哪步） | `AsyncSqliteSaver`：worker 以 `thread_id=task_id` 运行；`graph.aget_state` 读 values/messages/iteration + next（待跑节点） |
+| 任务注册/监督元数据 | `AsyncSqliteStore` namespace `("tasks", task_id)`（`task_store.db`，跨线程共享） |
+| 领导干预 | `interrupt()` 门禁（`request_review` 工具 → `gate` 节点）→ `Command(resume=reply, thread_id=task_id)` 续跑 |
+| 后台并发 / 跨轮次存活 | `asyncio.create_task` + 每舱独立 checkpoint thread |
+
+### 模块与数据流
+
+- **`agent/supervisor.py`**（派发器）：
+  - `dispatch(role, title, task, parent_thread)` → 立即返回 `task_id`；worker 后台跑
+    `build_subagent` 子图（role 来自 `SUBAGENTS` 表，role=creator/coder/arxiv/ingest）。
+  - `progress(task_id)` → 状态栈快照（store 状态 + checkpoint `next`/`iteration`/
+    messages 数 + interrupt 问题）；`collect(task_id)` → 产出（无 tool_calls 的末条
+    AI 消息，落 store `output`）；`resume(task_id, reply)` / `cancel(task_id)` /
+    `list_tasks(kind)`。
+  - 元数据 `task_store.db`（AsyncSqliteStore）：role/title/parent_thread/status/
+    created_at/updated_at/error/output。进程重启后 running 无活任务标 `orphaned`。
+  - 状态推进：pending → running → done/failed/interrupted/cancelled。
+- **`agent/providers/task_provider.py`**（父 agent 工具面，6 个监督工具）：
+  `task_dispatch` / `task_progress` / `task_collect` / `task_resume` / `task_cancel`
+  / `task_list`。dispatch/resume/cancel 走权限门（destructive）。
+- **`agent/task_registry.py`**（统一监督视图，只读叠加层）：合并「派发舱 + 实验
+  （domains/coding）+ 写作文档（domains/creation）+ Redis 后台任务栈
+  （web/api/routers）」，`find_tasks(term, kind)` 按 kind 近义词 / id 形似 / 标题模糊匹配。
+  供 `task_node` 与 `GET /api/tasks`（`web/api/routers/tasks.py` 薄封装）消费。
+- **主图**：`UnderstandResult.intent` 新增 `task_query` → `route_intent` → **`task_node`**
+  （轻量监督台，不经 resolve/search/plan 漏斗）：本会话 `active_tasks` 句柄 + 问句术语
+  → `task_registry` 快照 → LLM 简洁回答（TASK_SYSTEM，零状态）；LLM 失败 → 确定性
+  表格兜底；回写 `state.active_tasks`（跨 turn 引用「那个任务」）；emit `{"type":"tasks"}`。
+- **异步写作触发**：creation 域 + 显式异步信号（"后台写/异步/写好了叫我"）→
+  `decide_mode` 返回 react，让 react 循环用 `task_dispatch(role="creator",...)` 逐章
+  派发（跨轮次监督演示）。默认写作仍走同步 plan 路径，零回归。
+
+### Leader Gate（interrupt 干预，pragmatic 约束）
+
+- worker 需要领导输入时调 `request_review(question)`：`after_agent` 识别后路由到
+  `gate` 节点，对 Py3.10 通过把节点 config 桥进 `var_child_runnable_config`（
+  LangGraph 在 Py<3.11 async 节点不注入该 contextvar，`interrupt()` 会抛
+  "outside of a runnable context"）调 `interrupt()` 暂停 → checkpoint 落盘，
+  ainvoke 正常返回 → worker 状态 `interrupted`。
+- 领导 `task_resume(task_id, reply)` → `Command(resume=reply, thread_id=task_id)`
+  续跑；gate 再执行时把回复伪造为该调用的 ToolMessage，worker 当作正常工具结果。
+- 事件隔离：`_run_worker` 开头 `set_event_queue(None)` + `set_scope("compartment",
+  task_id)`——后台子图工具/token 事件不泄漏进（已结束的）SSE 回合。
+
+### 工具列表补充（父 agent 直接绑定）
+
+| 工具 | 来源 | 说明 |
+|---|---|---|
+| `task_dispatch` | supervisor | 派发长任务到隔离子 agent（role + 自包含 task → task_id，后台运行） |
+| `task_progress` / `task_collect` | supervisor | 读状态栈（next/iteration/interrupt）/ 收产出验收 |
+| `task_resume` / `task_cancel` | supervisor | 领导干预：回复 interrupt 续跑 / 取消 |
+| `task_list` | supervisor | 全部派发任务快照 |
+
+自检：`python agent/tests/test_supervisor.py`（dispatch→progress→collect /
+cancel / interrupt→resume / 事件隔离 / task_registry 匹配 / route_intent(task_query)，
+无 LLM，worker 图用确定性假图，仅 LangGraph 原语真跑）。
 
 ## 持久化
 
@@ -301,7 +378,7 @@ result2 = await run("How does it compare?", thread_id="paper_rmnet")
 |------|------|
 | `graph.py` | **父图** — 路由编排 + SqliteSaver + `run()` 入口 |
 | `search_loop.py` | **搜索子图** — agent ↔ tools ReAct 循环 |
-| `plan.py` | **Plan-and-Execute** — `decide_mode` + `plan_node` + `executor_node`（Phase 7） |
+| `plan.py` | **Plan-and-Execute** — `decide_mode`（含 requested_mode 覆盖）+ `plan_node`（结果步骤）+ `executor_node`/`_run_step_agent`（LLM 逐步执行）+ `verify_node`（Phase 7 / v13 验证 / v14 逐步执行） |
 | `subagents.py` | **Multi-Agent 运行时** — `build_subagent` 工厂（agent+tools+synthesize 三节点）+ `as_tool`（`resolved` contextvar 跨边界注入）+ `SUBAGENTS` 配置表（arxiv/ingest，Claude Code 模式，Phase 8） |
 | `stream.py` | **执行事件通道** — contextvar + `asyncio.Queue`，`emit()` 供 plan 节点推送进度事件；`set_scope`/`current_scope` 标记 subagent 作用域（{agent, id}）供层级可视化 |
 | `nodes.py` | LLM 节点: understand, memory, agent, synthesize, chat, clarify + 路由函数 |
@@ -315,8 +392,12 @@ result2 = await run("How does it compare?", thread_id="paper_rmnet")
 | `observability.py` | **观测层** — trace_id 结构化日志 + 计数器（Phase 0） |
 | `prompts.py` | System prompt 模板（遵循 CLAUDE.md 四条约束） |
 | `notifier.py` | **后台任务完成通知器**（v9）— 任务状态 dict → 1~2 句用户通知（零状态 prompt，`notify/stream` 消费） |
-| `domains/creation.py` | **创作域**（v10）— DocStore（`web/workspace/docs/{doc_id}/`）+ doc 工具 + docx 导出 + `_ensure_writing_doc`（plan 建 doc） |
-| `domains/coding.py` | **编码域**（v10 Phase C）— ExperimentStore（`experiments/{project}/_runs/{exp_id}/`）+ 后台实验运行/指标解析 + git 工具 + `delegate_code_task`（MCP bridge→CLI）+ study 知识库（确定性归档） |
+| `domains/creation.py` | **创作域**（v10）— DocStore（写作根 `get_docs_dir()`：默认 `web/workspace/docs`/设置项目路径后 `{project_path}/writing`）+ doc 工具 + docx 导出 + `_ensure_writing_doc`（plan 建 doc） |
+| `domains/coding.py` | **编码域**（v10 Phase C）— ExperimentStore（实验根 `get_experiments_path()`：默认 `web/workspace/experiments`，可独立配置）+ 后台实验运行/指标解析 + git 工具 + `delegate_code_task`（MCP bridge→CLI）+ study 知识库（跟随实验根，确定性归档） |
+| `workspace_config.py` | **可配置项目路径（唯一来源）** — settings.json 持久化（project_path / experiments_path）、各根 getter（project_root / experiments_path / study_root / docs_dir）、`set_paths` 校验落盘、测试 override 接缝 |
+| `supervisor.py` | **领导-部门制派发器**（v12）— 子 agent 任务舱运行时：`dispatch`/`progress`/`collect`/`resume`/`cancel`/`list_tasks` + `AsyncSqliteStore` 元数据（`task_store.db`）+ `AsyncSqliteSaver` 线程（thread_id=task_id）+ 后台 Runner + 事件隔离 |
+| `task_registry.py` | **统一任务监督视图**（v12）— 合并派发舱+实验+写作 doc+Redis 任务栈；`find_tasks(term, kind)` 供 task_node / /api/tasks |
+| `providers/task_provider.py` | **监督工具 Provider**（v12）— `task_dispatch/progress/collect/resume/cancel/list`（父 agent 工具面，信封 + 权限门） |
 | `state.py` | AgentState（分层设计 + 治理预算字段）+ UnderstandResult |
 | `docling_parser.py` | Docling PDF 解析器（PDF → Markdown） |
 | `academic_chunker.py` | 学术文献切分（章节感知） |
@@ -376,6 +457,7 @@ async for msg, metadata in agent.astream(
 | `fetch_content` | builtin | 本地论文精读：`paper_name` + `section`（空 section = 概览/章节清单） |
 | `check_paper` | builtin | **入库决策梯第一步**：本地检测（Redis 已入库`indexed` → 本地产物`downloaded_not_indexed` → `absent`），只读/幂等，无网络。论文 `state` 语义两类（indexed/not_indexed），parsed/raw 由 `detail` 派生（方案 B） |
 | `check_task_status` | builtin | **后台任务栈查询**：按 task_id 返回 pending/running/done/failed + progress/error/result（v9 新增，用户问"入库好了吗"时用） |
+| `task_dispatch` / `task_progress` / `task_collect` / `task_resume` / `task_cancel` / `task_list` | supervisor | **领导-部门制监督工具**（v12）— 派发长任务到隔离子 agent / 读状态栈 / 收产出验收 / 回复 interrupt 续跑 / 取消 / 列表。父 agent 全量持有 |
 | `read_file` / `list_dir` / `write_file` | generic | 文件 explorer 三件套，桌面客户端右侧面板可见 |
 | `skill__list` / `skill__load` | skills | 列/加载技能 |
 | `arxiv` / `ingest` | subagents | 委派写/外网任务给 subagent，父层只见「任务 → 摘要」 |
@@ -393,7 +475,10 @@ async for msg, metadata in agent.astream(
 
 `GenericProvider.list_tools()` 用 `_EXPOSED_TOOLS` allowlist 只暴露文件三件套。
 `get_time` / `calculator` / `fetch_url` 代码保留但**不注册**（研究 agent 死重，移出工具列表）。
-路径 resolve 后必须落在项目根内（越界即拒），`write_file` 被 `AGENT_USER_ROLE=user` 权限门拦截。
+路径 resolve 后必须落在所选根内（越界即拒）：`resolve_workspace_path(path, root=None)` 的
+默认 root = `workspace_config.get_project_root()`（未设置自定义项目路径时=代码根，与旧行为
+一致；设置后通用工具与客户端文件树一起跟随项目路径）。`write_file` 被
+`AGENT_USER_ROLE=user` 权限门拦截。
 
 ### 出参入参契约（统一信封，P6 收敛）
 
@@ -418,9 +503,11 @@ async for msg, metadata in agent.astream(
 | `understand` | LLM + structured output | Router: 三分类 + 置信度 + 上下文感知 |
 | `memory` | **纯代码 + 惰性 LLM** | 上下文快照组装（buffer + summary + profile） |
 | `resolve` | **确定性代码** | Paper name 匹配 + 置信度分级 → `state["resolved"]`（checkpointed）。P2 起不再经 contextvar 传递——必要上下文由父代理按 AGENT_SYSTEM「Delegation Priority」显式写进 subagent task |
+| `task` | LLM | **监督台（v12）** — task_query 意图直达：`active_tasks` + `task_registry` 快照 → 简洁状态/进度回答（无工具，低延迟，不被研究/写作漏斗卡住） |
 | `search` | **子图** | agent ↔ tools ReAct 循环（react 模式） |
-| `plan` | LLM + structured output | 拆解复杂查询为步骤表（plan 模式） |
-| `executor` | **纯代码** | 拓扑序执行 plan 步骤，无依赖并行 |
+| `plan` | LLM + structured output | 拆解复杂查询为结果步骤表（plan 模式，无 target） |
+| `executor` | **代码 + LLM 逐步执行** | 拓扑序**顺序**执行：auto 步骤 → `_run_step_agent`（模型的多次工具调用）；tool/subagent 步骤确定性执行；回填步骤状态 + 守卫跳过 |
+| `verify` | **纯代码 + 惰性 LLM** | 计划完成验证（报告式）：确定性统计 + LLM 目标满足度检查 |
 | `synthesize` | LLM | 安全网: 最终答案 |
 | `chat` | LLM | 轻量对话 |
 | `clarify` | LLM | 追问澄清 |

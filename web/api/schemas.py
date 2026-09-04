@@ -3,6 +3,8 @@ schemas.py — Pydantic models for FastAPI request/response validation.
 """
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 from datetime import datetime
 
@@ -84,12 +86,17 @@ class IndexStats(BaseModel):
 class AgentChatRequest(BaseModel):
     query: str = Field(..., min_length=1, description="User question")
     thread_id: str = Field(default="default", description="Conversation session ID")
+    mode: Literal["auto", "react", "plan"] = Field(
+        default="auto",
+        description="执行模式覆盖：auto = decide_mode 启发式；react/plan = 客户端显式指定",
+    )
 
 
 class AgentChatResponse(BaseModel):
     answer: str
     intent: str = ""
     thread_id: str = "default"
+    mode: str = ""
     error: str | None = None
 
 

@@ -55,7 +55,10 @@ def test_build_subagent_compiles():
     a = _fake_tool("fetch_content")
     sg, init = build_subagent("paper_reader", "sys", [a], max_steps=3)
     nodes = set(sg.get_graph().nodes)
-    assert {"agent", "tools"} <= nodes, "subagent must have agent + tools nodes"
+    # v15: subagent 节点名带命名空间(与父层 react 循环的 "agent"/"tools" 区分),
+    # 让 SSE 端 _msg_pump 能按 langgraph_node 排除 subagent 内部消息。
+    assert {"subagent_agent", "subagent_tools"} <= nodes, \
+        "subagent must have namespaced agent + tools nodes"
     assert init["subagent_system"] == "sys"
     assert init["bound_tools"] == ["fetch_content"]
     assert init["max_steps"] == 3

@@ -66,8 +66,8 @@ def test_decide_mode_creation_forces_plan():
 
 def test_doc_lifecycle():
     tmp = Path(tempfile.mkdtemp())
-    orig = creation.WORKSPACE_DOCS
-    creation.WORKSPACE_DOCS = tmp
+    orig = creation.get_writing_dir
+    creation.get_writing_dir = lambda: tmp
     try:
         doc_id = asyncio.run(creation._ensure_writing_doc("测试综述", ["intro", "method"], [
             {"args": {"section_id": "intro", "title": "1 引言",
@@ -110,7 +110,7 @@ def test_doc_lifecycle():
         docs = _data(creation.doc_list, {})
         assert any(x["doc_id"] == doc_id for x in docs["docs"])
     finally:
-        creation.WORKSPACE_DOCS = orig
+        creation.get_writing_dir = orig
         shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -148,8 +148,8 @@ def test_parse_steps_accepts_creator_target():
 def test_creation_plan_creates_doc():
     """fake LLM 产 outline → _creation_plan 建 doc + doc_id 注入每个步骤 args."""
     tmp = Path(tempfile.mkdtemp())
-    orig = creation.WORKSPACE_DOCS
-    creation.WORKSPACE_DOCS = tmp
+    orig = creation.get_writing_dir
+    creation.get_writing_dir = lambda: tmp
     try:
         reply = ('{"steps": [{"id": "ch-1", "description": "Write 1 引言", "target": "creator",'
                  ' "args": {"section_id": "intro", "title": "1 引言", "section_type": "introduction",'
@@ -166,7 +166,7 @@ def test_creation_plan_creates_doc():
         st = _data(creation.doc_get_state, {"doc_id": out["doc_id"]})
         assert [o["section_id"] for o in st["outline"]] == ["intro", "method"]
     finally:
-        creation.WORKSPACE_DOCS = orig
+        creation.get_writing_dir = orig
         shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -196,7 +196,7 @@ def test_executor_dispatches_creator_step():
             return "intro | 50 words | wrote via doc_write_section"
 
     tmp = Path(tempfile.mkdtemp())
-    orig_ws = creation.WORKSPACE_DOCS
+    orig_ws = creation.get_writing_dir
     import agent.tools as at
     orig = at.get_cached_tools
     creator_tool = _FakeCreator()
@@ -204,7 +204,7 @@ def test_executor_dispatches_creator_step():
     at.get_cached_tools = lambda: [creator_tool]
     try:
         # 预置一份 doc,intro 已在 outline 且 done —— 落盘校验以此为准
-        creation.WORKSPACE_DOCS = tmp
+        creation.get_writing_dir = lambda: tmp
         d = tmp / "abc123"
         (d / "sections").mkdir(parents=True)
         doc = {
@@ -225,7 +225,7 @@ def test_executor_dispatches_creator_step():
         assert out["output"].startswith("intro | 50 words"), "output is the verified status line"
     finally:
         at.get_cached_tools = orig
-        creation.WORKSPACE_DOCS = orig_ws
+        creation.get_writing_dir = orig_ws
         shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -237,13 +237,13 @@ def test_creator_step_fails_when_section_not_written():
         return "这是一整章正文内容,哪怕是再完整的文本也不算落盘。"
 
     tmp = Path(tempfile.mkdtemp())
-    orig_ws = creation.WORKSPACE_DOCS
+    orig_ws = creation.get_writing_dir
     import agent.tools as at
     orig = at.get_cached_tools
     at.get_cached_tools = lambda: [type("_F", (), {"name": "creator",
                                                    "ainvoke": _not_written_ainvoke})()]
     try:
-        creation.WORKSPACE_DOCS = tmp  # 空 workspace: abc123 不存在 → 未落盘
+        creation.get_writing_dir = lambda: tmp  # 空 workspace: abc123 不存在 → 未落盘
         step = {"id": "ch-1", "description": "Write intro", "target": "creator",
                 "args": {"doc_id": "abc123", "section_id": "intro"}, "depends_on": []}
         out = asyncio.run(plan_mod._run_step(step, {}, {}))
@@ -252,15 +252,15 @@ def test_creator_step_fails_when_section_not_written():
         assert out["output"] == "", "正文内容不得进入 subagent_results"
     finally:
         at.get_cached_tools = orig
-        creation.WORKSPACE_DOCS = orig_ws
+        creation.get_writing_dir = orig_ws
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 def test_creation_plan_serializes_steps():
     """章节串行回归：_creation_plan 必须链上 depends_on,避免并行写 doc 竞争。"""
     tmp = Path(tempfile.mkdtemp())
-    orig_ws = creation.WORKSPACE_DOCS
-    creation.WORKSPACE_DOCS = tmp
+    orig_ws = creation.get_writing_dir
+    creation.get_writing_dir = lambda: tmp
     try:
         reply = ('{"steps": [{"id": "ch-1", "description": "Write 1", "target": "creator",'
                  ' "args": {"section_id": "s1", "title": "1"}, "depends_on": []},'
@@ -272,7 +272,7 @@ def test_creation_plan_serializes_steps():
         assert out["plan"][0]["depends_on"] == []
         assert out["plan"][1]["depends_on"] == ["ch-1"], "后续章节必须依赖前章(串行)"
     finally:
-        creation.WORKSPACE_DOCS = orig_ws
+        creation.get_writing_dir = orig_ws
         shutil.rmtree(tmp, ignore_errors=True)
 
 

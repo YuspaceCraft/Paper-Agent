@@ -34,6 +34,8 @@ class AgentLimits:
     """agent 执行粒度上限(max_steps=step 粒度, max_turns=turn 粒度)。"""
     max_steps: int = 30
     max_turns: int = 50
+    # plan 模式 LLM 逐步执行(v14): 单个结果步骤的 agent 循环工具轮次上限
+    plan_step_max_steps: int = 10
     subagents: dict[str, SubagentLimits] = field(default_factory=dict)
 
 
@@ -59,6 +61,9 @@ def load_limits(path: str = "") -> AgentLimits:
 
     config.max_steps = _resolve(raw.get("max_steps"), config.max_steps)
     config.max_turns = _resolve(raw.get("max_turns"), config.max_turns)
+    config.plan_step_max_steps = _resolve(
+        raw.get("plan_step_max_steps"), config.plan_step_max_steps
+    )
 
     subs = raw.get("subagents")
     if isinstance(subs, dict):

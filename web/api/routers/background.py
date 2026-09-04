@@ -129,6 +129,16 @@ async def agent_ingest(req: AgentIngestRequest):
     _locate_and_dedup; a failing task reports its error on the task's error field.
     """
     paper_name = req.paper_name.strip()
+    # 防重 (v15): 同样的论文已有 running/pending 入库任务 → 复用该 task_id,
+    # 不再新建线程/任务行。避免 subagent 重复调 ingest_paper 时堆叠入库存任务。
+    for t in _task_list(100):
+        if (t.get("kind") == "ingest"
+                and t.get("paper_name") == paper_name
+                and t.get("status") in ("running", "pending")):
+            return AgentIngestResult(
+                task_id=t["task_id"], paper_name=paper_name,
+                status=t.get("status", "running"),
+            )
     task_id = uuid.uuid4().hex[:12]
     _task_create(task_id, kind="ingest", paper_name=paper_name,
                  notify="1" if req.notify else "")

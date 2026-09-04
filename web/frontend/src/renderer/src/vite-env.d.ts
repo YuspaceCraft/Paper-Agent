@@ -11,5 +11,7 @@ interface Window {
     restartBackend: () => Promise<string>;
     onBackendStatus: (cb: (data: { status: string; port?: number; error?: string }) => void) => () => void;
     onBackendLog: (cb: (line: string) => void) => () => void;
+    /** 原生「选择文件夹」对话框 → 绝对路径或 null（取消）。 */
+    selectDirectory: (defaultPath?: string) => Promise<string | null>;
   };
 }

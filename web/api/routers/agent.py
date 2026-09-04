@@ -98,7 +98,8 @@ async def chat(req: AgentChatRequest):
         config = {"configurable": {"thread_id": req.thread_id}}
         result = await asyncio.wait_for(
             agent.ainvoke(
-                {"messages": [HumanMessage(content=req.query)]},
+                {"messages": [HumanMessage(content=req.query)],
+                 "requested_mode": req.mode},
                 config=config,
             ),
             timeout=_TURN_TIMEOUT,
@@ -116,6 +117,7 @@ async def chat(req: AgentChatRequest):
             answer=sanitize_output(answer),
             intent=result.get("intent", ""),
             thread_id=req.thread_id,
+            mode=result.get("mode", ""),
         )
 
     except asyncio.TimeoutError:
@@ -147,6 +149,11 @@ async def chat_stream(req: AgentChatRequest):
       {"type":"token","content":"..."}              — LLM token chunk
       {"type":"tool_start","id":cid,"name":n,"args":{...}} — tool invoked
       {"type":"tool_end","id":cid,"name":n,"status":s,"result":"...","execution_time":t} — tool finished
+      {"type":"mode","mode":"react|plan","source":"user|auto"} — 实际执行模式
+      {"type":"plan","steps":[{id,description,target,depends_on,status}]} — 计划清单
+      {"type":"plan_step","id":sid,"status":"running|done|failed|skipped"} — 单步 TODO 状态
+      {"type":"plan_progress","done":n,"total":m}   — 计划完成度
+      {"type":"plan_verify","status":s,"done":n,"total":m,"outstanding":[...]} — 计划验证报告
       {"type":"done"}                               — stream finished
       {"type":"error","message":"..."}              — error
     """
@@ -181,7 +188,8 @@ async def chat_stream(req: AgentChatRequest):
             _MSG_DONE = object()
 
             stream = agent.astream(
-                {"messages": [HumanMessage(content=req.query)]},
+                {"messages": [HumanMessage(content=req.query)],
+                 "requested_mode": req.mode},
                 config=config,
                 stream_mode="messages",
                 subgraphs=True,  # tool loop lives in the "search" subgraph
@@ -224,7 +232,14 @@ async def chat_stream(req: AgentChatRequest):
 
                         # ── Tool result ──
                         elif isinstance(msg, ToolMessage):
-                            # subagent 的 tool_end 由 as_tool._call 自己 emit。
+                            # 只处理父层 react 循环("tools" 节点)的 tool 完成。
+                            # subagent 内部工具子图节点为 "subagent_tools"(见
+                            # subagents._build_subgraph 注释)——其卡片由
+                            # as_tool._call 边界 + ToolDispatcher 唯一发出,这里
+                            # 跳过,否则会给每条叶子工具补一张孤儿 tool_end。
+                            if node != "tools":
+                                continue
+                            # subagent 边界卡已由 as_tool._call 自己 emit。
                             if getattr(msg, "name", "") in SUBAGENT_NAMES:
                                 continue
                             cid = getattr(msg, "tool_call_id", "") or ""

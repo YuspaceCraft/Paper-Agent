@@ -20,7 +20,8 @@ class UnderstandResult(BaseModel):
     v10: added domain for 领域级路由 (paper / creation / coding).
     """
     intent: str = Field(
-        description="One of: literature_search, general_chat, needs_clarify"
+        description="One of: literature_search, general_chat, needs_clarify, "
+                    "task_query"
     )
     domain: str = Field(
         default="paper",
@@ -84,15 +85,31 @@ class AgentState(MessagesState):
     turn_count: int = 0
     max_turns: int = int(os.getenv("AGENT_MAX_TURNS", str(get_limits().max_turns)))
     consecutive_failures: int = 0
+    # ---- 工具调用去重缓存 (v15) ----
+    # {f"{name}|{canonical_args}": {"content": str, "count": int}}。
+    # build_tools_node 对单轮内「相同(工具,参数)」的重复调用复用上次结果,不再
+    # 重新执行副作用(重搜同一 query / 重复入库等)。每次 node 更新整表——单轮
+    # 工具调用数有限,规模可控。LangGraph 丢弃未声明的 key,必须在此声明。
+    tool_result_cache: dict = {}
     # ---- Plan-and-Execute (Phase 7) ----
-    # mode: "react" (single ReAct, default) | "plan" (plan_node → executor → synthesize)
+    # requested_mode: 客户端显式模式覆盖（随每次 input 透传，checkpoint 持久化）。
+    # "auto"(默认, decide_mode 启发式) | "react" | "plan"。客户端每回合重发，
+    # 无陈旧状态问题；graph.run() 等旧调用不传 → 默认 auto。
+    requested_mode: str = "auto"
+    # mode: 本回合实际采用的执行模式 "react" (single ReAct, default) | "plan"
+    # (plan_node → executor → verify → synthesize)。decide_mode 填充。
     mode: str = "react"
     # plan: ordered steps from plan_node. [{id, description, target, args, depends_on}]
+    # executor_node 回填每个 dict 的 status: pending/running/done/failed/skipped
     plan: list[dict] = []
     # plan_progress: number of plan steps completed by executor_node
     plan_progress: int = 0
     # subagent_results: executor output. [{step_id, ok, output, error}]
     subagent_results: list[dict] = []
+    # verification: verify_node 输出（计划完成验证报告式结论）。
+    # {status: satisfied|partial|failed|no_evidence, done, total,
+    #  outstanding: [{id, description, reason}]}；synthesize 消费。
+    verification: dict = {}
     # ---- Subagent runtime (Phase 8) ----
     # subagent_system: non-empty → agent_node uses this instead of AGENT_SYSTEM
     subagent_system: str = ""
@@ -106,6 +123,11 @@ class AgentState(MessagesState):
     domain: str = "paper"
     # Active writing document (set by plan_node when the creation plan creates one).
     doc_id: str | None = None
+    # ---- leader-department supervision (领导-部门制) ----
+    # active_tasks: 本会话派发的子 agent 任务句柄缓存（{task_id, role, title}，
+    # 跨 turn 累积，task_node 回写去重）。确定性解析「那个任务/刚才派发的」。
+    active_tasks: list[dict] = []
+
     # ---- governance budget ----
     # tokens_used = 当前一次 agent_node LLM 调用的实际输入规模（system +
     # 全量 messages + 当轮反馈）。语义是「本次喂给模型的上下文有没有超过上限」：

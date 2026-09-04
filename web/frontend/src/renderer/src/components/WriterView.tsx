@@ -46,7 +46,7 @@ const badge: (status: string) => React.CSSProperties = (status) => ({
   background: status === 'done' ? 'rgba(74,190,110,0.15)' : status === 'writing' ? 'rgba(245,158,11,0.15)' : 'var(--color-inset)',
 });
 
-export function WriterView() {
+export function WriterView({ writingDir }: { writingDir?: string }) {
   const [docs, setDocs] = useState<CreationDocMeta[]>([]);
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
   const [doc, setDoc] = useState<CreationDoc | null>(null);
@@ -100,6 +100,11 @@ export function WriterView() {
   }, [activeDocId, loadDoc, selectedSection]);
 
   useEffect(() => { mounted.current = true; void refreshList(); return () => { mounted.current = false; }; }, [refreshList]);
+
+  // 项目路径变更 → 写作文档目录跟随切换，重拉列表
+  useEffect(() => {
+    if (writingDir !== undefined) void refreshList();
+  }, [writingDir, refreshList]);
 
   useEffect(() => {
     if (!activeDocId) return;
@@ -159,6 +164,13 @@ export function WriterView() {
       {/* 工具条 */}
       <div style={toolbarStyle}>
         <span style={{ fontWeight: 700, fontSize: 14 }}>✍️ 论文写作</span>
+        {writingDir && (
+          <span style={{
+            fontSize: 11, color: 'var(--color-text-tertiary)',
+            fontFamily: 'var(--font-mono)', overflow: 'hidden',
+            textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260,
+          }} title="写作文档保存目录">📁 {writingDir}</span>
+        )}
         <input
           value={newTitle}
           onChange={e => setNewTitle(e.target.value)}
