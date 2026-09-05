@@ -25,6 +25,15 @@ from . import ToolDef, ToolProvider
 
 # ---- SKILL.md parser ----
 
+def discover_skills(skills_dir: str | Path = "skills") -> dict[str, dict]:
+    """公开的 skills 清单入口（配置中心 web/api/routers/config.py 用）。
+
+    返回原始清单（含停用的）：{name: {path, description, body, resources}}。
+    是否启用由调用方按 config_store.get_disabled_skills() 判定。
+    """
+    return _discover_skills(skills_dir)
+
+
 def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
     """解析 YAML frontmatter。返回 ({key: value}, body)。
 
@@ -120,7 +129,16 @@ class SkillProvider(ToolProvider):
 
     def _ensure_skills(self) -> dict[str, dict]:
         if self._skills is None:
-            self._skills = _discover_skills(self._skills_dir)
+            skills = _discover_skills(self._skills_dir)
+            # 配置中心停用集合：停用的 skill 不出现在 skill__list（reload_tools 后重建生效）。
+            try:
+                from .. import config_store
+                blocked = set(config_store.get_disabled_skills())
+            except Exception:
+                blocked = set()
+            if blocked:
+                skills = {n: s for n, s in skills.items() if n not in blocked}
+            self._skills = skills
         return self._skills
 
     # ---- pseudo-tool definitions ----

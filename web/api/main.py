@@ -26,7 +26,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import pdf, index, retrieval, reader, agent, workspace, background, creation, experiments, study, tasks, settings
+from .routers import pdf, index, retrieval, reader, agent, workspace, background, creation, experiments, study, tasks, settings, config
 
 
 # ---- startup warm-up ----
@@ -110,6 +110,7 @@ app.include_router(experiments.router)
 app.include_router(study.router)
 app.include_router(tasks.router)
 app.include_router(settings.router)
+app.include_router(config.router)
 
 
 @app.get("/api/health")

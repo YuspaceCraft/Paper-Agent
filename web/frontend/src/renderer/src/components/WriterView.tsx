@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, whenBackendReady, type CreationDoc, type CreationDocMeta, type SectionOutline } from '../api';
+import { api, whenBackendReady, type CreationDoc, type CreationDocMeta } from '../api';
 
 const toolbarStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10,

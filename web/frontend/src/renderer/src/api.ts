@@ -324,6 +324,10 @@ export function openTaskStream(onTask: (t: BackgroundTask) => void): () => void 
         stage: t.stage ?? '',
         createdAt: String(t.created_at ?? ''),
         updatedAt: String(t.updated_at ?? ''),
+        threadId: null,
+        percent: null,
+        startedAt: null,
+        finishedAt: null,
       });
     } catch {
       // malformed frame → ignore
@@ -339,7 +343,7 @@ export function openTaskStream(onTask: (t: BackgroundTask) => void): () => void 
 
 export const api = {
   // Health / system
-  getAgentHealth: () => get<{ status: string; model: string; tools: number }>('/api/agent/health'),
+  getAgentHealth: () => get<AgentHealth>('/api/agent/health'),
   getIndexStats: () => get<{ backend: string; collection_name: string; count: number }>('/api/index/stats'),
 
   // Workspace file explorer (root 决定基准根: project=文献问答+写作, experiments=实验)
@@ -445,6 +449,23 @@ export const api = {
     get<{ project: string; manifest: ProjectManifest; recent_experiments: Experiment[] }>(
       `/api/experiments/${encodeURIComponent(project)}/manifest`
     ),
+
+  // ---- Config center（配置中心，v12 界面）----
+  getConfigTools: () => get<ConfigTools>('/api/config/tools'),
+  updateConfigTools: (body: UpdateConfigToolsBody) =>
+    put<{ ok: boolean; agents: Record<string, ConfigAgentGroup> }>('/api/config/tools', body),
+  getExperimentConfig: () => get<ExperimentConfig>('/api/config/experiment'),
+  updateExperimentConfig: (body: UpdateExperimentConfigBody) =>
+    put<ExperimentConfig>('/api/config/experiment', body),
+  getMcpConfig: () => get<McpInfo>('/api/config/mcp'),
+  updateMcpConfig: (servers: McpServerInfo[]) =>
+    put<{ ok: boolean; servers: McpServerInfo[] }>('/api/config/mcp', { servers }),
+  testMcpServer: (name: string) =>
+    post<{ name: string; ok: boolean; tool_count: number; error: string | null }>(
+      '/api/config/mcp/test', { name }),
+  getSkillsConfig: () => get<SkillsConfigInfo>('/api/config/skills'),
+  updateSkillsConfig: (disabled: string[]) =>
+    put<{ ok: boolean; skills: SkillInfo[] }>('/api/config/skills', { disabled }),
 };
 
 // ---- Creation types (v10 / Phase B) ----
@@ -523,4 +544,89 @@ export interface ProjectManifest {
   changed_files: string[];
   changelog: Array<{ kind: string; summary: string; at: string }>;
   last_commit_sha: string;
+}
+
+// ---- Config center types (v12 / 配置中心) ----
+
+export interface AgentHealth {
+  status: string;
+  model: string;
+  tools: number;
+}
+
+export interface ConfigToolInfo {
+  name: string;
+  description: string;
+  source: string;
+  loaded: boolean;
+  enabled: boolean;
+}
+
+export interface ConfigAgentGroup {
+  label: string;
+  max_steps: number;
+  tools: ConfigToolInfo[];
+}
+
+/** 按 agent 分组的工具清单：parent + arxiv/ingest/creator/coder。 */
+export interface ConfigTools {
+  agents: Record<string, ConfigAgentGroup>;
+}
+
+export interface UpdateConfigToolsBody {
+  disabled: Record<string, string[]>;
+  max_steps?: Record<string, number>;
+}
+
+export interface ExperimentConfig {
+  paths: {
+    project_path: string | null;
+    project_root: string;
+    experiments_path: string;
+    writing_dir: string;
+  };
+  delegate_prefer: 'mcp' | 'cli';
+  delegate_timeout: number;
+  auto_git_commit: boolean;
+  manifest_auto_update: boolean;
+}
+
+export interface UpdateExperimentConfigBody {
+  delegate_prefer?: 'mcp' | 'cli';
+  delegate_timeout?: number;
+  auto_git_commit?: boolean;
+  manifest_auto_update?: boolean;
+}
+
+/** MCP server 行（除展示字段外透传 .mcp.json 原始字段）。 */
+export interface McpServerInfo {
+  name: string;
+  transport?: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+  headers?: Record<string, string>;
+  env?: Record<string, string>;
+  disabled?: boolean;
+  status: 'ok' | 'unknown';
+  tools: number;
+  [key: string]: unknown;
+}
+
+export interface McpInfo {
+  exists: boolean;
+  path: string;
+  servers: McpServerInfo[];
+}
+
+export interface SkillInfo {
+  name: string;
+  description: string;
+  path: string;
+  resources: string[];
+  enabled: boolean;
+}
+
+export interface SkillsConfigInfo {
+  skills: SkillInfo[];
 }

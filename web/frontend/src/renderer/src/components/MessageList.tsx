@@ -8,6 +8,7 @@
 
 import { type FC, type ReactNode, useEffect, useRef } from 'react';
 import type { Message, PlanStep } from '../state';
+import { useApp } from '../state/appContext';
 import { Markdown } from './Markdown';
 import { MessageSteps } from './MessageSteps';
 
@@ -152,12 +153,28 @@ const modeBadgeStyle: React.CSSProperties = {
   color: 'var(--color-text-secondary)',
 };
 
+const tsWrap: React.CSSProperties = { textAlign: 'right', fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 3 };
+const tsWrapLeft: React.CSSProperties = { ...tsWrap, textAlign: 'left', paddingLeft: 40 };
+
+const MessageTimestamp: FC<{ time: string; right?: boolean }> = ({ time, right }) => {
+  const t = new Date(time);
+  if (Number.isNaN(t.getTime())) return null;
+  return (
+    <div style={right ? tsWrap : tsWrapLeft}>
+      {t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+    </div>
+  );
+};
+
 export const MessageList: FC<Props> = ({ messages, onSuggestion }) => {
+  const { uiConfig } = useApp();
   const bottom = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const compact = uiConfig.density === 'compact';
 
   if (messages.length === 0) {
     return (
@@ -179,12 +196,13 @@ export const MessageList: FC<Props> = ({ messages, onSuggestion }) => {
   }
 
   return (
-    <div className="msg-list">
+    <div className={`msg-list${compact ? ' msg-list-compact' : ''}`}>
       {messages.map(m => {
         if (m.role === 'user') {
           return (
-            <div key={m.id} className="msg-row msg-row-user">
+            <div key={m.id} className="msg-row msg-row-user" style={{ flexDirection: 'column', alignItems: 'flex-end' }}>
               <div className="bubble-user">{m.content}</div>
+              {uiConfig.showTimestamps && <MessageTimestamp time={m.timestamp} right />}
             </div>
           );
         }
@@ -207,7 +225,7 @@ export const MessageList: FC<Props> = ({ messages, onSuggestion }) => {
               <VerifyBanner verify={m.verify ?? null} />
               {hasSteps && (
                 <div className="bubble-steps">
-                  <MessageSteps steps={m.steps!} />
+                  <MessageSteps steps={m.steps!} defaultExpanded={uiConfig.stepsExpanded} />
                 </div>
               )}
               {!!m.workNotes && m.workNotes.length > 0 && (
@@ -240,6 +258,7 @@ export const MessageList: FC<Props> = ({ messages, onSuggestion }) => {
               )}
               {showCursor && <span className="stream-cursor" />}
               {m.status === 'aborted' && <div className="msg-aborted">已停止</div>}
+              {uiConfig.showTimestamps && <MessageTimestamp time={m.timestamp} />}
             </div>
           </div>
         );

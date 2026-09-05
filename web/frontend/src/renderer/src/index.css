@@ -194,6 +194,15 @@ input:focus, textarea:focus { border-color: var(--color-primary); }
   display: inline-block;
 }
 
+/* ---- 消息密度（配置中心「通用 → 对话 → 消息密度」，紧凑） ---- */
+.msg-list.msg-list-compact { gap: 8px; padding-top: 12px; padding-bottom: 12px; }
+.msg-list.msg-list-compact .bubble-user,
+.msg-list.msg-list-compact .bubble-assistant {
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px 12px;
+}
+
 /* ============================================================
    Welcome / empty state
    ============================================================ */
@@ -367,3 +376,47 @@ input:focus, textarea:focus { border-color: var(--color-primary); }
   background: var(--color-inset);
 }
 .code-block-wrapper pre { margin: 0; }
+
+/* ============================================================
+   暗色主题（配置中心「通用 → 外观」切换；语义变量整套覆盖，
+   组件均引用 var(--color-*) 自动适配；强调绿调亮保证对比度）
+   ============================================================ */
+
+:root[data-theme="dark"] {
+  --color-primary: #4ade80;
+  --color-primary-hover: #3ecf73;
+  --color-primary-light: rgba(74, 222, 128, 0.14);
+
+  --color-bg: #0f172a;
+  --color-surface: #1e293b;
+  --color-inset: #263449;
+  --color-border: #334155;
+
+  --color-text: #f1f5f9;
+  --color-text-secondary: #cbd5e1;
+  --color-text-tertiary: #94a3b8;
+
+  --color-user-msg: var(--color-primary);
+  --color-system-msg: #1e293b;
+
+  --color-highlight: rgba(250, 204, 21, 0.32);
+  --color-danger: #f87171;
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.45);
+
+  color-scheme: dark;
+}
+
+/* 暗色下的滚动条与选中输入 */
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #475569; }
+:root[data-theme="dark"] input, :root[data-theme="dark"] textarea {
+  background: var(--color-inset);
+  color: var(--color-text);
+}
+:root[data-theme="dark"] .msg-avatar,
+:root[data-theme="dark"] .composer-textarea::placeholder {
+  filter: brightness(0.9);
+}

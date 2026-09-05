@@ -570,9 +570,13 @@ def build_subagents(tools: dict | None = None, checkpointer=None):
 
     limits = get_limits()
 
+    # 配置中心停用集合：停用的工具不进该 subagent 的工具面。
+    from . import config_store
+
     out = []
     for spec in SUBAGENTS:
-        toolset = [tools[n] for n in spec.tools if n in tools]
+        blocked = set(config_store.get_disabled_tools().get(spec.name, []) or [])
+        toolset = [tools[n] for n in spec.tools if n in tools and n not in blocked]
         if not toolset:
             continue
         cfg = limits.subagents.get(spec.name) if limits else None

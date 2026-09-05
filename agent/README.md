@@ -345,6 +345,29 @@ cancel / interrupt→resume / 事件隔离 / task_registry 匹配 / route_intent
 自检：`python agent/tests/test_context.py`（context 推导）+ `test_coding.py`
 （manifest 落盘 / run_experiment 同步 / set_experiment_project）。
 
+## v17 配置中心（tools / MCP / skills / 实验，桌面端）
+
+右上角「⚙ 配置」打开配置中心（web/frontend `ConfigCenter.tsx`），后端仅
+`web/api/routers/config.py` 薄封装，领域逻辑在：
+
+- **`agent/config_store.py`（唯一存储）** — `web/workspace/config.json`
+  （命名空间 `experiment` / `tools` / `skills`），原子写盘，测试 override 接缝。
+- **工具停用**：`subagents.build_subagents`（subagent 工具面）与
+  `tools.ensure_tools`（父 agent PARENT_NAMES 面）按 `get_disabled_tools()` 过滤；
+  `tools.reload_tools()` 重建工具表（会关闭旧 MCP 连接防子进程堆积）。
+- **Skills 停用**：`SkillProvider._ensure_skills` 按 `get_disabled_skills()` 过滤。
+- **委托通道**：`coding.delegate_code_task` 读 `get_delegate_prefer()`，
+  mcp（默认，MCP bridge 优先）| cli（跳过 bridge 直走 CLI）。
+- **生效语义**：reload 后**新会话**生效，运行中任务持有旧快照；`delegate_timeout`
+  / `auto_git_commit` / `manifest_auto_update` 本期持久化+展示，V2 接线消费。
+- **MCP 配置**：`mcp_provider.read/write_mcp_config`（原子重写 `.mcp.json`，
+  保留顶层未知键）+ `probe_server`（试连）；`POST /api/config/mcp/test` 对已加载
+  server 即时返回（复用 base registry），未加载才做真实试连（冷启动可能数十秒）。
+- **API**：`GET/PUT /api/config/{tools,experiment,mcp,skills}` +
+  `POST /api/config/mcp/test` + `GET /api/config/limits`（只读展示）。
+
+自检：`python agent/tests/test_config.py`（store 读写 / 停用过滤 / mcp 重写）。
+
 ## 持久化
 
 对话状态持久化到 `checkpoints.db`（项目根目录）。同一 `thread_id` 在服务器重启后继续使用。
@@ -405,7 +428,7 @@ result2 = await run("How does it compare?", thread_id="paper_rmnet")
 | `config.py` + `config.yaml` | **执行约束统一配置**（v10.1）— 父 agent `max_steps`/`max_turns` + 各 subagent `max_steps`；`load_limits()`/`get_limits()` 加载（env > yaml > 默认） |
 | `memory.py` | **MemoryManager** — 上下文组装 + 摘要缓存 + 用户画像持久化 |
 | `resolution.py` | **引用解析层** — 确定性 paper/section 匹配 + 置信度分级 |
-| `tools.py` | 工具装配工厂 — providers → dispatcher → StructuredTool（`ensure_tools()` 惰性构建） |
+| `tools.py` | 工具装配工厂 — providers → dispatcher → StructuredTool（`ensure_tools()` 惰性构建；`reload_tools()` 配置中心改 MCP/skills/工具开关后重建；`PARENT_NAMES` 模块级导出供配置中心清单） |
 | `providers/` | 统一工具层 — `BuiltinProvider` / `GenericProvider` / `MCPProvider` / `SkillProvider` + `CompositeToolProvider` |
 | `dispatcher.py` | **统一工具调度器** — 超时兜底 + 幂等重试 + 审计（Phase 3） |
 | `safety.py` | **安全层** — PII 脱敏 + 权限门（Phase 2） |
@@ -415,6 +438,7 @@ result2 = await run("How does it compare?", thread_id="paper_rmnet")
 | `domains/creation.py` | **创作域**（v10）— DocStore（写作根 `get_docs_dir()`：默认 `web/workspace/docs`/设置项目路径后 `{project_path}/writing`）+ doc 工具 + docx 导出 + `_ensure_writing_doc`（plan 建 doc） |
 | `domains/coding.py` | **编码域**（v10 Phase C）— ExperimentStore（实验根 `get_experiments_path()`：默认 `web/workspace/experiments`，可独立配置）+ 后台实验运行/指标解析 + git 工具 + `delegate_code_task`（MCP bridge→CLI）+ study 知识库（跟随实验根，确定性归档） |
 | `workspace_config.py` | **可配置项目路径（唯一来源）** — settings.json 持久化（project_path / experiments_path）、各根 getter（project_root / experiments_path / study_root / docs_dir）、`set_paths` 校验落盘、测试 override 接缝 |
+| `config_store.py` | **配置中心键值存储** — web/workspace/config.json（experiment 委托配置 / tools 停用集合 / skills 停用）；原子写盘 + 命名空间 get/set + 类型化 getter（`get_delegate_prefer`/`get_disabled_tools`/`get_disabled_skills`）；消费端：subagents 停用过滤、skill_provider 停用过滤、coding.delegate 委托通道 |
 | `supervisor.py` | **领导-部门制派发器**（v12）— 子 agent 任务舱运行时：`dispatch`/`progress`/`collect`/`resume`/`cancel`/`list_tasks` + `AsyncSqliteStore` 元数据（`task_store.db`）+ `AsyncSqliteSaver` 线程（thread_id=task_id）+ 后台 Runner + 事件隔离 |
 | `task_registry.py` | **统一任务监督视图**（v12）— 合并派发舱+实验+写作 doc+Redis 任务栈；`find_tasks(term, kind)` 供 task_node / /api/tasks |
 | `providers/task_provider.py` | **监督工具 Provider**（v12）— `task_dispatch/progress/collect/resume/cancel/list`（父 agent 工具面，信封 + 权限门） |

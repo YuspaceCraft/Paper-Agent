@@ -493,8 +493,12 @@ async def delegate_code_task(project: str, prompt: str, timeout: int = 600) -> s
     cwd = _project_dir(project)
     cwd.mkdir(parents=True, exist_ok=True)
 
+    # 委托通道偏好（配置中心）：cli → 跳过 MCP bridge 直接走 CLI；默认 mcp 优先。
+    from .. import config_store
+    prefer_cli = config_store.get_delegate_prefer() == "cli"
+
     # 1) MCP bridge：.mcp.json 中出现 coding 委托工具（如 codex__exec）则优先
-    mcp = await _coding_mcp_tool()
+    mcp = None if prefer_cli else await _coding_mcp_tool()
     if mcp is not None:
         try:
             out = await mcp.ainvoke({"prompt": prompt, "cwd": str(cwd)})

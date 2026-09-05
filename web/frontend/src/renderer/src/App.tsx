@@ -4,13 +4,14 @@
  * ponytail: useReducer + Context, no external state lib.
  */
 
-import { type FC, createContext, useContext, useReducer, useEffect, useCallback, useRef, useState } from 'react';
+import { type FC, useReducer, useEffect, useCallback, useRef, useState } from 'react';
 import {
-  type AppState, type Action, type Message, type BackgroundTask,
+  type AppState, type Message, type BackgroundTask,
   initialAppState, appReducer,
   loadThreads, saveThreads, loadMessages, saveMessages,
   loadBgTasks, saveBgTasks, parseTaskTs,
 } from './state';
+import { AppCtx } from './state/appContext';
 import { api, setBaseUrl, markProxyReady, streamNotify, openTaskStream, whenBackendReady, type Settings } from './api';
 
 import { TopBar } from './components/TopBar';
@@ -18,14 +19,11 @@ import { LeftPanel } from './components/LeftPanel';
 import { ChatView } from './components/ChatView';
 import { TaskCenter } from './components/TaskCenter';
 import { WorkspacePanel, type PanelTab } from './components/WorkspacePanel';
+import { ConfigCenter } from './components/ConfigCenter';
 import { StatusBar } from './components/StatusBar';
+import { type UIConfig, loadUIConfig, saveUIConfig, applyUIConfig } from './state/uiConfig';
 
-interface AppContextType {
-  state: AppState;
-  dispatch: React.Dispatch<Action>;
-}
-const AppCtx = createContext<AppContextType>({ state: initialAppState, dispatch: () => {} });
-export const useApp = () => useContext(AppCtx);
+// AppCtx 定义与 useApp 移入 state/appContext.ts（避免 App ↔ MessageList 循环 import）。
 
 /** 从 ingest_paper 工具的返回 JSON 中提取 task_id（tool_end 归因用）。 */
 function extractIngestTaskId(result?: string): string | null {
@@ -46,6 +44,9 @@ const App: FC = () => {
   // 右侧工作台面板 Tab（对话中心化：由 WorkspacePanel 自身切换，不替换对话主区）
   const [panelTab, setPanelTab] = useState<PanelTab>('files');
   const [settings, setSettings] = useState<Settings | null>(null);
+  // 配置中心（v12）：通用配置 local 态 + 模态开关
+  const [uiConfig, setUiConfig] = useState<UIConfig>(() => loadUIConfig());
+  const [configOpen, setConfigOpen] = useState(false);
 
   // 当前对话的绑定工件（SSE 归因持久化在 ThreadMeta）
   const activeThread = state.activeThreadId ? state.threads[state.activeThreadId] : null;
@@ -77,6 +78,17 @@ const App: FC = () => {
     } catch (e) {
       alert('更新路径失败: ' + String(e));
     }
+  }, []);
+
+  // ---- 通用配置（配置中心）：挂载应用持久化的主题/缩放；变更即保存+应用 ----
+  useEffect(() => { applyUIConfig(uiConfig); }, []);
+  const updateUiConfig = useCallback((patch: Partial<UIConfig>) => {
+    setUiConfig(prev => {
+      const next = { ...prev, ...patch };
+      saveUIConfig(next);
+      applyUIConfig(next);
+      return next;
+    });
   }, []);
 
   // ---- init: load persisted data + fetch server info ----
@@ -467,7 +479,7 @@ const App: FC = () => {
   }, [state.rightPanelWidth]);
 
   return (
-    <AppCtx.Provider value={{ state, dispatch }}>
+    <AppCtx.Provider value={{ state, dispatch, uiConfig }}>
       <div style={{
         height: '100%',
         display: 'flex',
@@ -480,7 +492,7 @@ const App: FC = () => {
           onToggleRight={() => dispatch({ type: 'TOGGLE_RIGHT_PANEL' })}
           apiOnline={apiOnline}
           settings={settings}
-          onUpdatePaths={handleUpdatePaths}
+          onOpenConfig={() => setConfigOpen(true)}
         />
 
         {/* Backend startup failure (e.g. :8001 port conflict) — surface it,
@@ -626,6 +638,18 @@ const App: FC = () => {
           indexStats={state.indexStats}
           agentHealth={state.agentHealth}
         />
+
+        {/* 配置中心（v12）：右上角「⚙ 配置」打开 */}
+        {configOpen && (
+          <ConfigCenter
+            onClose={() => setConfigOpen(false)}
+            settings={settings}
+            onUpdatePaths={handleUpdatePaths}
+            agentHealth={state.agentHealth}
+            config={uiConfig}
+            onUiChange={updateUiConfig}
+          />
+        )}
       </div>
     </AppCtx.Provider>
   );

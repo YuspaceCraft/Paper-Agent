@@ -11,8 +11,10 @@ mcp_provider.py — 社区标准 MCP 客户端封装。
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import tempfile
 from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any
@@ -45,6 +47,65 @@ def _find_config() -> Path | None:
             break
         d = d.parent
     return None
+
+
+def default_config_path() -> Path:
+    """仓库根 .mcp.json（配置中心读写用，不依赖 cwd）。"""
+    return Path(__file__).resolve().parent.parent.parent / ".mcp.json"
+
+
+def read_mcp_config_raw(path: str | Path | None = None) -> dict:
+    """读 .mcp.json 原始内容（不做 env 展开）。缺失/损坏 → {"mcpServers": {}}。"""
+    p = Path(path) if path else default_config_path()
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        if isinstance(raw, dict):
+            return raw
+    except (OSError, ValueError):
+        pass
+    return {"mcpServers": {}}
+
+
+def write_mcp_config(servers: dict, path: str | Path | None = None) -> Path:
+    """原子重写 .mcp.json 的 mcpServers，保留其他顶层键。
+
+    servers: {server_name: 原始配置 dict}。返回写入路径。
+    """
+    p = Path(path) if path else default_config_path()
+    cfg = read_mcp_config_raw(p)
+    cfg["mcpServers"] = servers
+    p.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, p)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return p
+
+
+async def probe_server(name: str, timeout: float = 20.0) -> dict:
+    """试连单个 MCP server，返回 {name, ok, tool_count, error}。
+
+    从磁盘配置读该 server 并建立独立连接（不扰动已缓存工具表）。
+    """
+    cfg = load_mcp_config().get(name)
+    if not cfg:
+        return {"name": name, "ok": False, "tool_count": 0, "error": "server not in .mcp.json"}
+    provider = MCPProvider({name: cfg})
+    try:
+        tooldefs = await asyncio.wait_for(provider.list_tools(), timeout=timeout)
+        return {"name": name, "ok": True, "tool_count": len(tooldefs), "error": None}
+    except Exception as exc:
+        return {"name": name, "ok": False, "tool_count": 0,
+                "error": f"{type(exc).__name__}: {exc}"[:300]}
+    finally:
+        await provider.close()
 
 
 def load_mcp_config(path: str | Path | None = None) -> dict[str, dict]:

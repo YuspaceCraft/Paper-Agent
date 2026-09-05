@@ -13,5 +13,7 @@ interface Window {
     onBackendLog: (cb: (line: string) => void) => () => void;
     /** 原生「选择文件夹」对话框 → 绝对路径或 null（取消）。 */
     selectDirectory: (defaultPath?: string) => Promise<string | null>;
+    /** 在系统文件管理器中打开目录（配置中心 Skills 用）→ 成功与否。 */
+    shellOpenPath: (path: string) => Promise<boolean>;
   };
 }

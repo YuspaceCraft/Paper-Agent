@@ -82,8 +82,8 @@ C:/Users/30811/miniconda3/envs/demo/python.exe agent/some_script.py
 | `retrieval_orchestrator/` | **离线检索验证框架** — QA 生成 → 多策略检索 → 指标计算 → 最优配置选择 |
 | `retrieval_orchestrator/evaluation.yaml` | 检索评估配置模板 |
 | `skills/` | 技能注册与模板 |
-| `web/api/` | **FastAPI 后端** — pdf_pipeline + indexer HTTP 接口 |
-| `web/frontend/` | **Electron 桌面客户端** — 主进程(src/main)拉起 uvicorn 子进程 + React 渲染进程(src/renderer)；**右侧工作台 WorkspacePanel**（文档/实验/文件三 Tab）绑定对话 active 工件（对话中心化，见 docs/conversation-centric-workspace.md） |
+| `web/api/` | **FastAPI 后端** — pdf_pipeline + indexer HTTP 接口 + /**config**（配置中心薄封装，见下） |
+| `web/frontend/` | **Electron 桌面客户端** — 主进程(src/main)拉起 uvicorn 子进程 + React 渲染进程(src/renderer)；**右侧工作台 WorkspacePanel**（文档/实验/文件三 Tab）绑定对话 active 工件（对话中心化，见 docs/conversation-centric-workspace.md）；**右上角「⚙ 配置」打开配置中心**（ConfigCenter 模态：通用/实验/工具/MCP/Skills 五板块，通用=本地即时生效，其余走 /api/config） |
 | `web/chunk_viz_page.py` | **Streamlit 可视化页面** — chunk 交互式浏览 |
 
 ## 架构速览 / 数据流主线
@@ -118,6 +118,7 @@ PDF
 | `indexer/config.yaml` | indexer + retrieval | 向量库/embedding 后端选择（qdrant vs chroma / api vs local） |
 | `checkpoints.db` | agent/graph + agent/supervisor | LangGraph 会话跨重启持久化；子 agent 舱以 thread_id=task_id 落同一库（状态栈） |
 | `task_store.db` | agent/supervisor + web/api/routers/tasks | 子 agent 任务舱元数据（AsyncSqliteStore）跨重启持久化 |
+| `web/workspace/config.json` | agent/config_store + web/api/routers/config | **配置中心存储**：experiment 委托配置 / tools 停用集合 / skills 停用（原子写盘） |
 | `{experiments_root}/{project}/project.json` | agent/domains/manifest + coding.py | **项目委托契约 manifest**（entry/key_files/baseline/changelog）——主 agent、外部 coding agent、UI 三方共享；run_experiment/delegate/git_commit 回写 |
 | `web/workspace/settings.json` | agent/workspace_config + web/api/routers/settings | **可配置工作区根（唯一来源）**：`project_path`（文献问答+写作根，未设置=代码根，写作存 `web/workspace/docs`；设置后写作存 `{project_path}/writing`）、`experiments_path`（实验根，独立默认 `web/workspace/experiments`）；研究知识库根跟随实验根 `parent/studies` |
 
@@ -176,7 +177,10 @@ PDF
 | `understand_node` `memory_node` `resolve_node` `synthesize_node` `chat_node` `clarify_node` + `route_intent` | `agent/nodes.py` `agent/resolution.py` | 各节点实现 |
 | `decide_mode` / `plan_node` / `executor_node` / `_run_step_agent` / `verify_node` | `agent/plan.py` | plan-and-execute：客户端可经 `state.requested_mode`（`AgentChatRequest.mode`）显式覆盖模式（auto/react/plan）；paper 域步骤=结果单元（无 target），`executor_node` 顺序执行，`_run_step_agent` 是 LLM 逐步执行（一步可多次调工具，预算 `plan_step_max_steps`）；`verify_node` 报表式验证 `verification`（synthesize 消费） |
 | `build_search_subgraph()` | `agent/search_loop.py` | agent↔tools ReAct 循环（step 上限 `state.max_steps` 默认 30，`AGENT_MAX_STEPS`/兼容旧名 `AGENT_MAX_ITERATIONS`；turn 上限 `max_turns` 默认 50） |
-| `ensure_tools()` / `get_cached_tools()` | `agent/tools.py` | 工具装配（builtin + generic + MCP） |
+| `ensure_tools()` / `get_cached_tools()` / `reload_tools()` | `agent/tools.py` | 工具装配（builtin + generic + MCP）；配置中心改 MCP/skills/工具开关后 `reload_tools()` 重建（关旧 MCP 连接，新会话生效） |
+| `config_store`（get/set/set_many + `get_delegate_prefer`/`get_disabled_tools`/`get_disabled_skills`） | `agent/config_store.py` | **配置中心键值存储** — `web/workspace/config.json`（experiment/tools/skills 命名空间，原子写盘）；subagents/skill_provider/coding 消费 |
+| `read_mcp_config_raw`/`write_mcp_config`/`probe_server`/`default_config_path` | `agent/providers/mcp_provider.py` | `.mcp.json` 读写（原子、保留顶层未知键）+ 单 server 试连 |
+| `discover_skills` | `agent/providers/skill_provider.py` | skills 清单公开入口（含停用项，供配置中心 API 组装） |
 | `load_mcp_config()` / `MCPProvider` | `agent/providers/mcp_provider.py` | 从 `.mcp.json` 加载外部 MCP 工具 |
 | `load_limits()` / `get_limits()` | `agent/config.py` + `agent/config.yaml` | **执行约束统一配置** — 父 agent `max_steps`/`max_turns` + 各 subagent `max_steps`（`subagents.<name>`）。优先级 env `AGENT_MAX_STEPS`/`AGENT_MAX_TURNS` > yaml > 代码默认；`state.py` 默认值与 `build_subagents` 都从它取值 |
 | `AgentState` | `agent/state.py` | 图状态 schema（含 `active_tasks` 会话任务句柄） |
@@ -316,6 +320,9 @@ C:/Users/30811/miniconda3/envs/demo/python.exe -m web.cli reset --force
 | `/api/workspace/list`、`/api/workspace/read` | GET | workspace 文件浏览/读取（`?root=project\|experiments` 切换基准根；project=文献问答+写作根，experiments=实验根） |
 | `/api/workspace/browse` | GET | 本地目录只读浏览（路径选择器用，空 path→盘符列表） |
 | `/api/settings` | GET/PUT | 可配置路径：`{project_path?, experiments_path?}`（项目路径/实验根，PUT 传空串清除） |
+| `/api/config/{tools,experiment,mcp,skills}` | GET/PUT | **配置中心**：工具停用集合（按 subagent 分组）/ 实验委托配置（delegate_prefer 生效，其余 V2）/ .mcp.json 读写（原子重写）/ skills 停用；保存后 `reload_tools()` 重建工具表（新会话生效） |
+| `/api/config/mcp/test` | POST | MCP server 试连 `{name}`；已加载的即时返回，未加载做真实连接（冷启动可数十秒） |
+| `/api/config/limits` | GET | 生效执行上限只读展示（max_steps/max_turns/subagents） |
 | `/api/tasks`、`/api/tasks/search` | GET | 统一任务监督视图（派发子 agent 舱 + 实验 + 写作文档 + Redis 后台任务，v12） |
 | `/api/experiments/{project}/manifest` | GET | 项目 manifest（project.json 委托契约）+ 近期实验（对话中心化实验面板用） |
 

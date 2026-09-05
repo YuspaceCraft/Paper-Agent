@@ -61,10 +61,10 @@ export function labelFor(name: string): string {
   return TOOL_LABELS[name] ?? `🔧 ${name}`;
 }
 
-const ToolStepRow: FC<{ step: ToolStep }> = ({ step }) => {
-  // Default-collapsed: the row (status + name + time) always stays visible;
-  // args/result only show when the user clicks to expand.
-  const [expanded, setExpanded] = useState(false);
+const ToolStepRow: FC<{ step: ToolStep; defaultExpanded?: boolean }> = ({ step, defaultExpanded }) => {
+  // Default-collapsed (或配置中心「通用 → 工具步骤默认展开」): 行（状态+名称+耗时）
+  // 恒可见；args/result 展开显示。running 时自动展开。
+  const [expanded, setExpanded] = useState(!!defaultExpanded || step.status === 'running');
   const running = step.status === 'running';
   const failed = step.status === 'error';
   const isSubagent = step.kind === 'subagent';
@@ -144,9 +144,9 @@ const ToolStepRow: FC<{ step: ToolStep }> = ({ step }) => {
 };
 
 // Recursively render a step and its nested children (a subagent's leaf tools).
-const StepNode: FC<{ step: ToolStep }> = ({ step }) => (
+const StepNode: FC<{ step: ToolStep; defaultExpanded?: boolean }> = ({ step, defaultExpanded }) => (
   <div>
-    <ToolStepRow step={step} />
+    <ToolStepRow step={step} defaultExpanded={defaultExpanded} />
     {step.children && step.children.length > 0 && (
       <div
         style={{
@@ -155,17 +155,17 @@ const StepNode: FC<{ step: ToolStep }> = ({ step }) => (
           borderLeft: '1px solid var(--color-border)',
         }}
       >
-        {step.children.map(c => <StepNode key={c.id} step={c} />)}
+        {step.children.map(c => <StepNode key={c.id} step={c} defaultExpanded={defaultExpanded} />)}
       </div>
     )}
   </div>
 );
 
-export const MessageSteps: FC<{ steps: ToolStep[] }> = ({ steps }) => {
+export const MessageSteps: FC<{ steps: ToolStep[]; defaultExpanded?: boolean }> = ({ steps, defaultExpanded }) => {
   if (!steps || steps.length === 0) return null;
   return (
     <div>
-      {steps.map(s => <StepNode key={s.id} step={s} />)}
+      {steps.map(s => <StepNode key={s.id} step={s} defaultExpanded={defaultExpanded} />)}
     </div>
   );
 };

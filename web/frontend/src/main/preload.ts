@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   restartBackend: () => ipcRenderer.invoke('backend-restart') as Promise<string>,
   selectDirectory: (defaultPath?: string) =>
     ipcRenderer.invoke('dialog:open-directory', defaultPath) as Promise<string | null>,
+  shellOpenPath: (path: string) =>
+    ipcRenderer.invoke('shell:open-path', path) as Promise<boolean>,
   onBackendStatus: (callback: (data: BackendStatus) => void) => {
     const handler = (_event: unknown, data: BackendStatus) => callback(data)
     ipcRenderer.on('backend-status', handler)

@@ -8,7 +8,7 @@
 import { type FC, useCallback, useRef } from 'react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
-import { streamChat, type PlanVerdict } from '../api';
+import { streamChat } from '../api';
 import type { AgentMode, Message, PlanStep, PlanVerdictData, ToolStep, WorkNote } from '../state';
 import { saveMessages } from '../state';
 

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import path from 'path'
 import { PythonBackend } from './backend'
 
@@ -39,6 +39,12 @@ function createWindow() {
 function setupIPC() {
   ipcMain.handle('get-backend-port', () => backend?.getPort() ?? null)
   ipcMain.handle('get-backend-status', () => backend?.getStatus() ?? 'stopped')
+  ipcMain.handle('shell:open-path', async (_e, path?: string) => {
+    // 配置中心「Skills → 打开目录」：在系统文件管理器中显示该目录。
+    if (!path) return false
+    const r = await shell.openPath(String(path))
+    return r === '' // 空字符串 = 打开成功
+  })
   ipcMain.handle('dialog:open-directory', async (_e, defaultPath?: string) => {
     // 原生「选择文件夹」对话框（与上传 PDF 的原生文件对话框同类）。
     // 返回绝对路径或 null（取消）。cwd 提示来自调用方当前值。

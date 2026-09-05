@@ -29,6 +29,27 @@ _ALL_TOOLS: list[BaseTool] = []     # 父 agent 工具面（见模块 docstring�
 _BASE_TOOLS: list[BaseTool] = []    # 完整注册表（供 subagent 挑选）
 _build_lock = asyncio.Lock()
 _built = False
+_prev_mcp_provider = None  # 上次构建的 MCPProvider（reload 时 close，防子进程堆积）
+
+# 父 agent 工具面 = 文件 explorer 三件套 + 本地三态检测 + 后台任务查询
+# + 库只读工具 + skills + subagents（Claude Code 模式：全能父 agent 持有
+# 全部只读工具）。search_papers/fetch_content 直接由父 agent 调用（列库/
+# 读论文内容），避免"列目录/对比"类任务被迫经 subagent 中转。
+# 仅写/外网操作隔离在 subagent：ingest（下载/入库，原子性）、arxiv（外网）。
+# check_paper 是入库决策梯的确定性第一步（Redis→fs 本地快检），
+# check_task_status 是后台任务栈查询（用户随时可能问"入库好了吗"），
+# 都必须由父 agent 直接调用，故显式列入。
+# 模块级导出：配置中心工具清单（web/api/routers/config.py）用它展示父 agent 工具面。
+PARENT_NAMES = {"read_file", "list_dir", "write_file", "check_paper",
+                "check_task_status", "search_papers", "fetch_content",
+                "skill__list", "skill__load",
+                # 领导-部门制监督工具（父 agent 全量）
+                "task_dispatch", "task_progress", "task_collect",
+                "task_resume", "task_cancel", "task_list",
+                # 对话-项目绑定（对话中心化）：父 agent 可 pin 项目 /
+                # 查询项目 manifest（写操作隔离在 coding 工具，此处仅
+                # 绑定+只读查询；改代码仍走 coder 子代理）
+                "set_experiment_project", "experiment_project_state"}
 
 
 def get_cached_tools() -> list[BaseTool]:
@@ -46,6 +67,22 @@ def get_base_tools() -> list[BaseTool]:
     return _BASE_TOOLS
 
 
+async def reload_tools(mcp_config: str | Path | None = None,
+                       skills_dir: str = "skills") -> list[BaseTool]:
+    """重新构建工具表（MCP 配置 / skills / 工具开关改动后调用）。
+
+    下次 ensure_tools 会从磁盘重新加载 .mcp.json 与 skills/，并按
+    config_store 的停用集合重新过滤。运行中的 agent 任务持有旧快照，
+    新会话生效（前端已提示）。
+    """
+    global _built
+    async with _build_lock:
+        _built = False
+        _ALL_TOOLS.clear()
+        _BASE_TOOLS.clear()
+    return await ensure_tools(mcp_config=mcp_config, skills_dir=skills_dir)
+
+
 async def ensure_tools(mcp_config: str | Path | None = None,
                        skills_dir: str = "skills") -> list[BaseTool]:
     """初始化工具列表。幂等，首次调用连接 MCP server + 扫描 skills。
@@ -54,7 +91,7 @@ async def ensure_tools(mcp_config: str | Path | None = None,
         mcp_config: .mcp.json 路径，默认自动查找
         skills_dir: skills/ 目录路径
     """
-    global _ALL_TOOLS, _BASE_TOOLS, _built
+    global _ALL_TOOLS, _BASE_TOOLS, _built, _prev_mcp_provider
     if _built:
         return _ALL_TOOLS
 
@@ -71,13 +108,22 @@ async def ensure_tools(mcp_config: str | Path | None = None,
         from .domains.creation import CreationProvider
         from .domains.coding import CodingProvider
 
+        # 重建（reload_tools）前关闭旧 MCP 连接，避免子进程堆积。
+        if _prev_mcp_provider is not None:
+            try:
+                await _prev_mcp_provider.close()
+            except Exception:
+                pass
+
+        mcp_provider = MCPProvider(load_mcp_config(mcp_config))
+        _prev_mcp_provider = mcp_provider
         providers = [
             BuiltinProvider(),
             CreationProvider(),   # 创作域 doc 工具（creator subagent 可见）
             CodingProvider(),     # 编码域实验/git/delegate/study 工具（coder subagent 可见）
             TaskProvider(),       # 领导-部门制监督工具（task_dispatch/progress/collect/resume/cancel/list）
             GenericProvider(),
-            MCPProvider(load_mcp_config(mcp_config)),
+            mcp_provider,
             SkillProvider(skills_dir),
         ]
 
@@ -96,25 +142,11 @@ async def ensure_tools(mcp_config: str | Path | None = None,
         base_map = {t.name: t for t in _BASE_TOOLS}
         subagent_tools = build_subagents(base_map)
 
-        # 父 agent 工具面 = 文件 explorer 三件套 + 本地三态检测 + 后台任务查询
-        # + 库只读工具 + skills + subagents（Claude Code 模式：全能父 agent 持有
-        # 全部只读工具）。search_papers/fetch_content 直接由父 agent 调用（列库/
-        # 读论文内容），避免"列目录/对比"类任务被迫经 subagent 中转。
-        # 仅写/外网操作隔离在 subagent：ingest（下载/入库，原子性）、arxiv（外网）。
-        # check_paper 是入库决策梯的确定性第一步（Redis→fs 本地快检），
-        # check_task_status 是后台任务栈查询（用户随时可能问"入库好了吗"），
-        # 都必须由父 agent 直接调用，故显式列入。
-        PARENT_NAMES = {"read_file", "list_dir", "write_file", "check_paper",
-                        "check_task_status", "search_papers", "fetch_content",
-                        "skill__list", "skill__load",
-                        # 领导-部门制监督工具（父 agent 全量）
-                        "task_dispatch", "task_progress", "task_collect",
-                        "task_resume", "task_cancel", "task_list",
-                        # 对话-项目绑定（对话中心化）：父 agent 可 pin 项目 /
-                        # 查询项目 manifest（写操作隔离在 coding 工具，此处仅
-                        # 绑定+只读查询；改代码仍走 coder 子代理）
-                        "set_experiment_project", "experiment_project_state"}
-        parent_tools = [t for t in _BASE_TOOLS if t.name in PARENT_NAMES]
+        # 父 agent 工具面：模块级 PARENT_NAMES 全集减去配置中心停用的父级工具
+        from .config_store import get_disabled_tools as _get_disabled_tools
+        _parent_disabled = set(_get_disabled_tools().get("parent", []) or [])
+        parent_tools = [t for t in _BASE_TOOLS
+                        if t.name in PARENT_NAMES and t.name not in _parent_disabled]
         parent_tools += subagent_tools
 
         # 原地清空/扩展，保持 ALL_TOOLS 与 _ALL_TOOLS 别名一致。

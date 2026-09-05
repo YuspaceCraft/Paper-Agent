@@ -2,13 +2,12 @@
  * TopBar.tsx — app header bar.
  *
  * 对话中心化后不再有「领域工作区切换」（右侧工作台 WorkspacePanel 的 Tab 承担）；
- * Upload PDF 移到聊天输入框（ChatInput 上传图标），此处只管侧栏/路径/在线灯。
+ * Upload PDF 移到聊天输入框（ChatInput 上传图标），此处只管侧栏/配置中心/在线灯。
+ * 右上角「⚙ 配置」打开配置中心（ConfigCenter 模态）；路径配置移入「实验配置」Tab。
  */
 
-import { useState } from 'react';
 import type { FC } from 'react';
 import type { Settings } from '../api';
-import { ProjectPathPicker } from './ProjectPathPicker';
 
 interface Props {
   leftPanelOpen: boolean;
@@ -17,7 +16,7 @@ interface Props {
   onToggleRight: () => void;
   apiOnline: boolean;
   settings: Settings | null;
-  onUpdatePaths: (patch: { project_path?: string | null; experiments_path?: string | null }) => void;
+  onOpenConfig: () => void;
 }
 
 const barStyle: React.CSSProperties = {
@@ -41,8 +40,7 @@ const btnStyle: React.CSSProperties = {
   gap: 4,
 };
 
-export const TopBar: FC<Props> = ({ leftPanelOpen, rightPanelOpen, onToggleLeft, onToggleRight, apiOnline, settings, onUpdatePaths }) => {
-  const [pickerOpen, setPickerOpen] = useState(false);
+export const TopBar: FC<Props> = ({ leftPanelOpen, rightPanelOpen, onToggleLeft, onToggleRight, apiOnline, settings, onOpenConfig }) => {
   const isCustom = !!settings?.project_path;
 
   return (
@@ -55,24 +53,14 @@ export const TopBar: FC<Props> = ({ leftPanelOpen, rightPanelOpen, onToggleLeft,
 
     <div style={{ flex: 1 }} />
 
-    {/* 项目路径配置（文献问答 + 写作根；实验根在实验工作区单独配） */}
+    {/* 配置中心（通用/实验/工具/MCP/Skills 五板块；路径配置在「实验配置」Tab） */}
     <button
       style={{ ...btnStyle, border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer' }}
-      onClick={() => setPickerOpen(o => !o)}
-      title={isCustom ? `项目路径: ${settings!.project_path}` : '项目路径: 默认（代码仓库根）'}
+      onClick={onOpenConfig}
+      title="配置中心（通用 / 实验 / 工具 / MCP / Skills）"
     >
-      ⚙ 路径{isCustom ? ' ·已配置' : ''}
+      ⚙ 配置{isCustom ? ' ·已配置' : ''}
     </button>
-    {pickerOpen && (
-      <ProjectPathPicker
-        label="项目路径"
-        hint={settings ? `写作保存到 {路径}/writing` : ''}
-        value={settings?.project_path ?? ''}
-        allowClear
-        onPick={p => { onUpdatePaths({ project_path: p || null }); setPickerOpen(false); }}
-        onClose={() => setPickerOpen(false)}
-      />
-    )}
 
     <span style={{
       width: 8, height: 8, borderRadius: '50%',
