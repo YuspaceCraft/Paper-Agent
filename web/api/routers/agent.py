@@ -228,6 +228,8 @@ async def chat_stream(req: AgentChatRequest):
                                                 "id": cid,
                                                 "name": tc.get("name", ""),
                                                 "args": tc.get("args", {}),
+                                                # 对话中心化：事件带 thread_id，前端据此归因对话绑定
+                                                "thread_id": req.thread_id,
                                             }))
 
                         # ── Tool result ──
@@ -253,6 +255,8 @@ async def chat_stream(req: AgentChatRequest):
                                 "execution_time": (
                                     round(time.monotonic() - started, 2) if started else None
                                 ),
+                                # 对话中心化：事件带 thread_id，前端据此归因对话绑定
+                                "thread_id": req.thread_id,
                             }))
                 except asyncio.TimeoutError:
                     await out.put(("err", "turn_timeout"))
@@ -272,6 +276,9 @@ async def chat_stream(req: AgentChatRequest):
                     if isinstance(ev, dict) and ev.get("type") == "token":
                         ev = {**ev, "content": sanitize_output(
                             _strip_marker_segment(ev.get("content", "")))}
+                    # 对话中心化：事件带 thread_id，前端据此归因对话绑定。
+                    if isinstance(ev, dict):
+                        ev = {**ev, "thread_id": req.thread_id}
                     await out.put(_ss_event(ev))
 
             msg_task = asyncio.create_task(_msg_pump())

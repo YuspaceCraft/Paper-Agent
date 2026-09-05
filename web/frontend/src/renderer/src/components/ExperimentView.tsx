@@ -17,38 +17,38 @@ interface Props {
   onUpdatePaths?: (patch: PathPatch) => void;
 }
 
-const toolbarStyle: React.CSSProperties = {
+export const toolbarStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10,
   padding: '8px 16px', flexShrink: 0,
   borderBottom: '1px solid var(--color-border)',
   background: 'var(--color-surface)',
 };
-const btnStyle: React.CSSProperties = {
+export const btnStyle: React.CSSProperties = {
   padding: '4px 10px', borderRadius: 6, fontSize: 13,
   border: '1px solid var(--color-border)', background: 'var(--color-surface)',
   display: 'inline-flex', alignItems: 'center', gap: 4,
 };
-const primaryBtn: React.CSSProperties = {
+export const primaryBtn: React.CSSProperties = {
   ...btnStyle, background: 'var(--color-primary)',
   borderColor: 'var(--color-primary)', color: '#fff',
 };
-const colTitle: React.CSSProperties = {
+export const colTitle: React.CSSProperties = {
   padding: '8px 12px', fontSize: 12, fontWeight: 600,
   color: 'var(--color-text-secondary)', flexShrink: 0,
   borderBottom: '1px solid var(--color-border)', background: 'var(--color-inset)',
 };
 
-const statusStyle = (s: string): React.CSSProperties => ({
+export const statusStyle = (s: string): React.CSSProperties => ({
   fontSize: 11, padding: '1px 8px', borderRadius: 10, flexShrink: 0,
   color: s === 'done' ? 'var(--color-success)' : s === 'running' || s === 'pending' ? 'var(--color-warning)' : 'var(--color-danger)',
   background: s === 'done' ? 'rgba(74,190,110,0.15)' : s === 'running' || s === 'pending' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.1)',
 });
 
-const STATUS_LABEL: Record<string, string> = {
+export const STATUS_LABEL: Record<string, string> = {
   pending: '⏳ 待启动', running: '▶ 运行中', done: '✓ 完成', failed: '✗ 失败', unknown: '—',
 };
 
-function MetricSparkline({ values }: { values: number[] }) {
+export function MetricSparkline({ values }: { values: number[] }) {
   /** 数值序列 → 手写 SVG polyline（主题绿，无外部图表库）。 */
   if (values.length < 2) return null;
   const w = 120, h = 28;

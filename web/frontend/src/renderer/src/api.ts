@@ -75,6 +75,9 @@ export type SSEEvent =
   | { type: 'plan_step'; id: string; status: string; name?: string; description?: string; output?: string }
   | { type: 'plan_progress'; done: number; total: number }
   | { type: 'plan_verify'; status: string; done: number; total: number; outstanding: Array<{ id: string; description: string; reason: string }> }
+  // 对话中心化（L2/L4）：写作/实验内联状态事件（带 thread_id 供归因）
+  | { type: 'doc_section'; doc_id: string; section_id?: string; title?: string; status: string; word_count?: number; thread_id?: string }
+  | { type: 'experiment'; exp_id: string; project?: string; name?: string; command?: string; status: string; exit_code?: number | null; thread_id?: string }
   | { type: 'done' }
   | { type: 'error'; message: string };
 
@@ -93,6 +96,8 @@ export interface SSECallbacks {
   onPlanStep?: (id: string, status: PlanStep['status'], output?: string) => void;
   onPlanProgress?: (done: number, total: number) => void;
   onPlanVerify?: (verdict: PlanVerdict) => void;
+  onDocSection?: (docId: string, payload: { section_id?: string; title?: string; status: string; word_count?: number }) => void;
+  onExperiment?: (expId: string, payload: { project?: string; name?: string; command?: string; status: string; exit_code?: number | null }) => void;
   onToken?: (content: string) => void;
   onDone?: () => void;
   onError?: (message: string) => void;
@@ -171,6 +176,23 @@ export function streamChat(
                     break;
                   case 'plan_verify':
                     callbacks.onPlanVerify?.({ status: event.status, done: event.done, total: event.total, outstanding: event.outstanding });
+                    break;
+                  case 'doc_section':
+                    callbacks.onDocSection?.(event.doc_id, {
+                      section_id: event.section_id,
+                      title: event.title,
+                      status: event.status,
+                      word_count: event.word_count,
+                    });
+                    break;
+                  case 'experiment':
+                    callbacks.onExperiment?.(event.exp_id, {
+                      project: event.project,
+                      name: event.name,
+                      command: event.command,
+                      status: event.status,
+                      exit_code: event.exit_code ?? null,
+                    });
                     break;
                   case 'token':
                     callbacks.onToken?.(event.content);
@@ -418,6 +440,11 @@ export const api = {
     post<{ exp_id: string; status: string; project: string }>('/api/experiments/run', { project, command, name }),
   getProjectGit: (project: string, kind: 'diff' | 'log' | 'status' = 'diff') =>
     get<{ kind: string; output: string }>(`/api/experiments/projects/${encodeURIComponent(project)}/git?kind=${kind}`),
+  /** 项目 manifest（project.json 委托契约）+ 近期实验 —— 实验面板/文档引用。 */
+  getProjectManifest: (project: string) =>
+    get<{ project: string; manifest: ProjectManifest; recent_experiments: Experiment[] }>(
+      `/api/experiments/${encodeURIComponent(project)}/manifest`
+    ),
 };
 
 // ---- Creation types (v10 / Phase B) ----
@@ -478,4 +505,22 @@ export interface Experiment {
   created_at: string;
   finished_at: string;
   log_tail?: string;
+}
+
+// ---- Project manifest（project.json 委托契约, 对话中心化 L4）----
+
+export interface ProjectManifest {
+  project: string;
+  paper: string;
+  description: string;
+  entry: { run: string; data: string; config: string };
+  key_files: string[];
+  metrics_schema: Record<string, unknown>;
+  baseline: Record<string, unknown>;
+  status: string;
+  last_run: string;
+  last_delegate: string;
+  changed_files: string[];
+  changelog: Array<{ kind: string; summary: string; at: string }>;
+  last_commit_sha: string;
 }

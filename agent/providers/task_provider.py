@@ -37,6 +37,18 @@ async def _dispatch(role: str, title: str, task: str, context: str = "",
             "self-contained prompt (zero-state) for the sub-agent.")
     if context:
         task = f"{task}\n\n## Context from leader\n{context}"
+    # 对话中心化：LLM 通常不会主动填 parent_thread — 从节点 config 桥当前对话
+    # thread_id（同 subagents._gate_node 的 contextvar bridge），保证派发任务
+    # 归属到发起对话（跨刷新监督视图连续）。
+    if not parent_thread:
+        try:
+            from langchain_core.runnables.config import var_child_runnable_config
+            conf = var_child_runnable_config.get()
+            if conf is not None:
+                parent_thread = (conf or {}).get(
+                    "configurable", {}).get("thread_id", "")
+        except Exception:
+            pass
     try:
         task_id = await dispatch(role, title, task,
                                  parent_thread=parent_thread)

@@ -39,6 +39,7 @@ from langchain_core.tools import tool
 from ..providers import ToolDef, ToolProvider
 from ..safety import tool_allowed
 from .. import workspace_config
+from . import manifest as project_manifest
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -223,6 +224,12 @@ async def _watch(exp: dict, proc: asyncio.subprocess.Process) -> None:
     state["metrics"] = _parse_metrics(state)
     _save_state(state)
     _study_archive(state)
+    project_manifest.update_manifest(state.get("project", ""), status=state["status"],
+                                     last_run=state["exp_id"])
+    _emit_experiment({"type": "experiment", "exp_id": state["exp_id"],
+                      "project": state.get("project", ""),
+                      "name": state.get("name", ""), "status": state["status"],
+                      "exit_code": rc})
     log_event("experiment_finished", node="coding", exp_id=state["exp_id"],
               status=state["status"], exit_code=rc)
 
@@ -319,6 +326,16 @@ def _study_archive(exp: dict) -> None:
     _save_study(topic, study)
 
 
+def _emit_experiment(event: dict) -> None:
+    """SSE 实验状态事件（前端内联状态卡）。无事件队列（supervisor compartment /
+    离线调用）时静默 no-op——stream.emit 对 None 队列本就是 no-op。"""
+    try:
+        from ..stream import emit
+        emit(event)
+    except Exception:
+        pass
+
+
 def _git_sha(project: str) -> str:
     try:
         out = subprocess.run(
@@ -338,12 +355,14 @@ async def run_experiment(project: str, command: str, name: str = "") -> str:
     The project folder receives the configured experiments root / {project}
     (created if missing). Logs stream to runs/<exp_id>/run.log; a metrics.json/metrics.csv
     written by the command is parsed automatically on completion. Returns
-    {"ok": true, "data": {exp_id, status: "running"}} — poll experiment_status."""
+    {"ok": true, "data": {exp_id, status: "running"}} — poll experiment_status.
+    Updates the project manifest (project.json) — status/last_run 同步。"""
     exp_id = uuid.uuid4().hex[:10]
     now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    slug = _safe_project(project)
     exp = {
         "exp_id": exp_id,
-        "project": _safe_project(project),
+        "project": slug,
         "name": name or os.path.basename(command)[:60],
         "command": command,
         "status": "pending",
@@ -354,8 +373,14 @@ async def run_experiment(project: str, command: str, name: str = "") -> str:
         "finished_at": "",
     }
     _save_state(exp)
+    project_manifest.ensure_manifest(slug)
+    project_manifest.update_manifest(slug, status="running", last_run=exp_id)
+    project_manifest.log_event(slug, "experiment_start", f"{exp['name']} ({exp_id})")
     await _spawn(exp)
-    return _ok({"exp_id": exp_id, "status": "running", "project": exp["project"]})
+    _emit_experiment({"type": "experiment", "exp_id": exp_id,
+                      "project": slug, "name": exp["name"],
+                      "command": command, "status": "running"})
+    return _ok({"exp_id": exp_id, "status": "running", "project": slug})
 
 
 @tool
@@ -436,7 +461,10 @@ async def git_commit(project: str, message: str) -> str:
                         capture_output=True, encoding="utf-8", errors="replace", timeout=30)
     if cm.returncode != 0:
         return _err(cm.stderr[:500], error_type="transient")
-    return _ok({"sha": _git_sha(project), "message": message})
+    sha = _git_sha(project)
+    project_manifest.update_manifest(_safe_project(project), last_commit_sha=sha)
+    project_manifest.log_event(_safe_project(project), "commit", f"{sha} {message[:200]}")
+    return _ok({"sha": sha, "message": message})
 
 
 def _git(d: Path, cmd: list[str]) -> str:
@@ -518,6 +546,12 @@ async def delegate_code_task(project: str, prompt: str, timeout: int = 600) -> s
         except ValueError:
             pass
     payload["changed_files"] = _changed_files(cwd)
+    project_manifest.update_manifest(
+        _safe_project(project),
+        changed_files=payload["changed_files"],
+        last_delegate=text[:400],
+    )
+    project_manifest.log_event(_safe_project(project), "delegate", text[:400])
     return _ok(payload)
 
 
@@ -581,6 +615,46 @@ async def study_add_hypothesis(topic: str, hypothesis: str) -> str:
     })
     _save_study(topic, study)
     return _ok({"topic": study.get("topic"), "n_hypotheses": len(study["hypotheses"])})
+
+
+# ---- 项目 manifest / 对话绑定（对话中心化重构 L4） ----
+
+@tool
+async def set_experiment_project(project: str, paper: str = "",
+                                 entry_run: str = "", description: str = "") -> str:
+    """Bind the current conversation to an experiment project and establish (or
+    update) its manifest — the durable delegation contract. Creates the project
+    folder + project.json if missing; records the related paper / entry run
+    command / description. Call whenever the user names a project or a coder run
+    establishes one (文献→实验连通的关键动作). Returns
+    {"ok": true, "data": {project, bound, manifest}}."""
+    slug = _safe_project(project)
+    d = _project_dir(slug)
+    d.mkdir(parents=True, exist_ok=True)
+    patch: dict = {"status": "draft"}
+    if paper:
+        patch["paper"] = paper
+    if entry_run:
+        patch.setdefault("entry", {})["run"] = entry_run
+    if description:
+        patch["description"] = description
+    mf = project_manifest.update_manifest(slug, **patch)
+    project_manifest.log_event(slug, "bind", f"bound to conversation{', paper=' + paper if paper else ''}")
+    return _ok({"project": slug, "bound": True, "manifest": mf})
+
+
+@tool
+async def experiment_project_state(project: str) -> str:
+    """Read an experiment project's manifest + recent experiments (read-only).
+    The manifest carries entry.run / key_files / baseline / status / changelog —
+    the delegation contract for the external coding agent. Use to learn a
+    project's entry points before writing about it or delegating."""
+    slug = _safe_project(project)
+    mf = project_manifest.load_manifest(slug)
+    recent = [_public_exp(st) for st in _list_experiments(slug)[:5]]
+    for e in recent:
+        e["metric_summary"] = _summarize(e.get("metrics", {}))
+    return _ok({"project": slug, "manifest": mf, "recent_experiments": recent})
 
 
 # ---- ToolDef + Provider ----
@@ -664,6 +738,33 @@ CODING_TOOLDEFS = [
                         "properties": {"topic": {"type": "string"},
                                        "hypothesis": {"type": "string"}},
                         "required": ["topic", "hypothesis"]}),
+    ToolDef(name="set_experiment_project", source="builtin",
+            annotations={"readOnlyHint": False, "idempotentHint": True},
+            description=(
+                "Bind the current conversation to an experiment project and establish "
+                "(or update) its manifest (project.json) — the durable delegation "
+                "contract. Creates the project folder if missing; records related "
+                "paper / entry run command / description. Call when the user names a "
+                "project or a coder run establishes one."),
+            parameters={"type": "object",
+                        "properties": {
+                            "project": {"type": "string"},
+                            "paper": {"type": "string", "default": "",
+                                      "description": "Related paper name (文献↔实验连通)."},
+                            "entry_run": {"type": "string", "default": "",
+                                          "description": "Default run command, e.g. 'python train.py'."},
+                            "description": {"type": "string", "default": ""}},
+                        "required": ["project"]}),
+    ToolDef(name="experiment_project_state", source="builtin", annotations={"readOnlyHint": True},
+            description=(
+                "Read an experiment project's manifest + recent experiments "
+                "(read-only). manifest carries entry.run / key_files / baseline / "
+                "status / changelog — the delegation contract for the external "
+                "coding agent. Use to learn a project's entry points before writing "
+                "about it or delegating."),
+            parameters={"type": "object",
+                        "properties": {"project": {"type": "string"}},
+                        "required": ["project"]}),
 ]
 
 _FUNC_MAP = {
@@ -678,6 +779,8 @@ _FUNC_MAP = {
     "delegate_code_task": delegate_code_task,
     "study_context": study_context,
     "study_add_hypothesis": study_add_hypothesis,
+    "set_experiment_project": set_experiment_project,
+    "experiment_project_state": experiment_project_state,
 }
 
 

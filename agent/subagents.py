@@ -389,6 +389,10 @@ Toolset (all you may call):
   markers inline next to the supported claim (keep them verbatim — the parent resolves
   them to [Paper, page N] later).
 - read_file / list_dir: inspect workspace files only if the task explicitly needs them.
+- experiment_list(project) / read_metrics(exp_id) / study_context(topic): when the
+  task cites experiment results or compares against a baseline, pull the REAL
+  numbers with these tools — never invent metrics or reuse figures from the task
+  text verbatim; copy values from tool results.
 
 Writing rules (scientific, structured):
 1. Structure the section with short academic paragraphs; use bullets/tables/figure
@@ -427,6 +431,12 @@ Toolset (all you may call):
   metrics.csv written by the command are parsed on completion. Returns exp_id.
 - experiment_status(exp_id) / experiment_list(project) / read_metrics(exp_id):
   inspect results (status / exit_code / git_sha / metrics / log tail).
+- set_experiment_project(project, paper, entry_run, description): bind this work
+  to a project and establish/update its manifest (project.json) — the delegation
+  contract. CALL IT when you establish which project you are working on.
+- experiment_project_state(project): read the project manifest (entry.run /
+  key_files / baseline / changelog) + recent experiments. Read it to learn the
+  project's entry points / baseline before delegating or optimizing.
 - git_status(project) / git_diff(project) / git_log(project) / git_commit(project, message):
   version-control the project (commit = destructive, gated).
 - delegate_code_task(project, prompt): hand a coding job (implement/tune/fix/
@@ -452,7 +462,11 @@ Honesty:
 - Keep the summary short: what was run (exp_id), the metrics delta vs baseline,
   what was changed (files), and the recommended next step.
 
-Output ONLY a short status summary. No preamble."""
+Output ONLY a short status summary with a machine-parseable footer (the leader
+derives the conversation context from it — NEVER omit):
+PROJECT: <project name>
+EXP: <exp_id for every experiment you ran, one per line>
+"""
 
 
 SUBAGENTS: list[SubagentSpec] = [
@@ -499,6 +513,8 @@ SUBAGENTS: list[SubagentSpec] = [
             "doc_write_section", "doc_get_state", "doc_create",
             "doc_set_outline", "doc_list", "doc_export_docx",
             "search_papers", "fetch_content",
+            # 实验引用（对话中心化：写完实验章要引用真实指标/基线）
+            "experiment_list", "read_metrics", "study_context",
             "read_file", "list_dir",
         ],
         # 综述章节要先读多篇论文(fetch_content 多轮)再落盘;5 轮会中途打满 →
@@ -522,6 +538,7 @@ SUBAGENTS: list[SubagentSpec] = [
             "run_experiment", "experiment_status", "experiment_list", "read_metrics",
             "git_status", "git_diff", "git_log", "git_commit",
             "delegate_code_task",
+            "set_experiment_project", "experiment_project_state",
             "study_context", "study_add_hypothesis",
             "read_file", "list_dir",
             "search_papers", "fetch_content",

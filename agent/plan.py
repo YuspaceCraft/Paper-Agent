@@ -367,7 +367,8 @@ async def _creation_plan(model, state: AgentState, query: str,
 
 # ---- executor ----
 
-def _subagent_task(description: str, args: dict) -> str:
+def _subagent_task(description: str, args: dict, context: dict | None = None,
+                   target: str = "") -> str:
     """Fold a plan step into the single "task" string subagents accept.
 
     Subagent tools expose exactly one field (SubagentArgs.task), but plan_node
@@ -378,15 +379,34 @@ def _subagent_task(description: str, args: dict) -> str:
     Non-empty args render as a `key: value` command block — the SAME contract the
     parent react loop is prompted to emit (esp. for ingest: action / arxiv_id /
     paper_name / pdf_path must survive the folding verbatim).
+
+    context: 对话级工作区记忆（active_project / study_topic / recent_experiments）。
+    target 为 creator/coder 时折进 task（子 agent 保持零状态，记忆由父注入）——
+    creator 写实验章需要真实指标（recent_experiments → read_metrics），coder 需要
+    项目/研究主题归属（active_project/study_topic）。
     """
     task = description or ""
-    if not args:
-        return task
-    lines = []
-    for k, v in args.items():
-        lines.append(f"{k}: {v}" if not isinstance(v, (dict, list)) else f"{k}: {json.dumps(v, ensure_ascii=False)}")
-    block = "\n".join(lines)
-    return f"{task}\n{block}" if task else block
+    if args:
+        lines = []
+        for k, v in args.items():
+            lines.append(f"{k}: {v}" if not isinstance(v, (dict, list)) else f"{k}: {json.dumps(v, ensure_ascii=False)}")
+        block = "\n".join(lines)
+        task = f"{task}\n{block}" if task else block
+
+    if target in ("creator", "coder") and context:
+        ctx_lines: list[str] = []
+        proj = context.get("active_project")
+        if proj:
+            ctx_lines.append(f"- active experiment project: {proj}")
+        topic = context.get("study_topic")
+        if topic:
+            ctx_lines.append(f"- study topic: {topic}")
+        exps = context.get("recent_experiments") or []
+        if exps:
+            ctx_lines.append(f"- recent experiments in this conversation: {', '.join(map(str, exps[:5]))} (read real metrics via read_metrics(exp_id))")
+        if ctx_lines:
+            task = f"{task}\n\n## Conversation Context\n" + "\n".join(ctx_lines)
+    return task
 
 
 async def _verify_creator_step(step: dict, out: str) -> tuple[bool, str, str]:
@@ -452,7 +472,9 @@ async def _run_step(step: dict, state: dict, config) -> dict:
             # subagent target → single "task" arg (see _subagent_task)
             name = target
             tool = tools.get(target)
-            call_args = {"task": _subagent_task(step.get("description", ""), args)}
+            call_args = {"task": _subagent_task(
+                step.get("description", ""), args,
+                context=state.get("context"), target=target)}
             is_subagent = True
 
         if tool is None:

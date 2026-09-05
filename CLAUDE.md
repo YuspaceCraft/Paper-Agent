@@ -83,7 +83,7 @@ C:/Users/30811/miniconda3/envs/demo/python.exe agent/some_script.py
 | `retrieval_orchestrator/evaluation.yaml` | 检索评估配置模板 |
 | `skills/` | 技能注册与模板 |
 | `web/api/` | **FastAPI 后端** — pdf_pipeline + indexer HTTP 接口 |
-| `web/frontend/` | **Electron 桌面客户端** — 主进程(src/main)拉起 uvicorn 子进程 + React 渲染进程(src/renderer) |
+| `web/frontend/` | **Electron 桌面客户端** — 主进程(src/main)拉起 uvicorn 子进程 + React 渲染进程(src/renderer)；**右侧工作台 WorkspacePanel**（文档/实验/文件三 Tab）绑定对话 active 工件（对话中心化，见 docs/conversation-centric-workspace.md） |
 | `web/chunk_viz_page.py` | **Streamlit 可视化页面** — chunk 交互式浏览 |
 
 ## 架构速览 / 数据流主线
@@ -118,6 +118,7 @@ PDF
 | `indexer/config.yaml` | indexer + retrieval | 向量库/embedding 后端选择（qdrant vs chroma / api vs local） |
 | `checkpoints.db` | agent/graph + agent/supervisor | LangGraph 会话跨重启持久化；子 agent 舱以 thread_id=task_id 落同一库（状态栈） |
 | `task_store.db` | agent/supervisor + web/api/routers/tasks | 子 agent 任务舱元数据（AsyncSqliteStore）跨重启持久化 |
+| `{experiments_root}/{project}/project.json` | agent/domains/manifest + coding.py | **项目委托契约 manifest**（entry/key_files/baseline/changelog）——主 agent、外部 coding agent、UI 三方共享；run_experiment/delegate/git_commit 回写 |
 | `web/workspace/settings.json` | agent/workspace_config + web/api/routers/settings | **可配置工作区根（唯一来源）**：`project_path`（文献问答+写作根，未设置=代码根，写作存 `web/workspace/docs`；设置后写作存 `{project_path}/writing`）、`experiments_path`（实验根，独立默认 `web/workspace/experiments`）；研究知识库根跟随实验根 `parent/studies` |
 
 ## 关键符号速查（动手前先查这里，省一轮全局搜索）
@@ -181,6 +182,9 @@ PDF
 | `AgentState` | `agent/state.py` | 图状态 schema（含 `active_tasks` 会话任务句柄） |
 | `dispatch`/`progress`/`collect`/`resume`/`cancel`/`list_tasks` | `agent/supervisor.py` | **领导-部门制派发器** — 长任务派发到隔离子 agent（thread_id=task_id 状态栈）+ 监督/干预/验收；`task_store.db` 元数据；`graph.get_agent` 启动时 `init_supervisor(checkpointer)` |
 | `find_tasks`/`list_tasks` + `task_dispatch`/`task_progress`/`task_collect`/`task_resume`/`task_cancel`/`task_list` | `agent/task_registry.py` + `agent/providers/task_provider.py` | 统一任务监督视图（舱+实验+写作+Redis 合并） + 父 agent 监督工具面 |
+| `AgentState.context` + `context_node` | `agent/state.py` + `agent/context.py` + `agent/graph.py` | **对话中心化记忆** — 每回合确定性重建 `{active_doc_id, active_project, study_topic, recent_experiments}`；`graph.py` 位置 `memory→context→route_intent`；agent_node 与 `_subagent_task`（creator/coder）注入（子 agent 零状态） |
+| `set_experiment_project` / `experiment_project_state` | `agent/domains/coding.py` + `agent/domains/manifest.py` | **项目绑定 + 委托契约** — 对话绑定项目并建/更新 project.json（父 agent + coder）；只读返回 manifest + 近期实验（creator 引用/前端/父查询） |
+| creator subagent 实验引用 | `agent/subagents.py`（tools 列表 + CREATOR_SYSTEM） | creator 挂只读 `experiment_list/read_metrics/study_context`，写实验章引用真实指标 |
 | `get_project_root`/`get_experiments_path`/`get_study_root`/`get_docs_dir`/`set_paths`/`set_override` | `agent/workspace_config.py` | **可配置工作区根（唯一来源）** — settings.json 持久化；写作目录逻辑：project_path 未设置→`web/workspace/docs`，设置后→`{project_path}/writing`；实验根/研究根各自独立 |
 
 ### retrieval_orchestrator（离线评估）
@@ -313,6 +317,7 @@ C:/Users/30811/miniconda3/envs/demo/python.exe -m web.cli reset --force
 | `/api/workspace/browse` | GET | 本地目录只读浏览（路径选择器用，空 path→盘符列表） |
 | `/api/settings` | GET/PUT | 可配置路径：`{project_path?, experiments_path?}`（项目路径/实验根，PUT 传空串清除） |
 | `/api/tasks`、`/api/tasks/search` | GET | 统一任务监督视图（派发子 agent 舱 + 实验 + 写作文档 + Redis 后台任务，v12） |
+| `/api/experiments/{project}/manifest` | GET | 项目 manifest（project.json 委托契约）+ 近期实验（对话中心化实验面板用） |
 
 ## 离线检索评估
 

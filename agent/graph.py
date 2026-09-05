@@ -41,6 +41,7 @@ from .nodes import (
     route_intent,
     domain_node,
 )
+from .context import context_node
 from .resolution import resolve_node
 from .search_loop import build_search_subgraph
 from .plan import plan_node, executor_node, verify_node, decide_mode
@@ -57,7 +58,7 @@ def build_graph():
     safety net (synthesize).
 
     Flow:
-        START → understand → memory → route_intent
+        START → understand → memory → context → route_intent
           ├─ literature_search → resolve → mode decision (decide_mode,
           │       requested_mode 客户端覆盖优先)
           │       ├─ react → search (subgraph) → synthesize → END
@@ -78,6 +79,7 @@ def build_graph():
 
     w.add_node("understand", understand_node)
     w.add_node("memory", memory_node)
+    w.add_node("context", context_node)
     w.add_node("resolve", resolve_node)
     w.add_node("domain", domain_node)
     w.add_node("search", build_search_subgraph())
@@ -91,9 +93,10 @@ def build_graph():
 
     w.add_edge(START, "understand")
     w.add_edge("understand", "memory")
+    w.add_edge("memory", "context")
 
     w.add_conditional_edges(
-        "memory",
+        "context",
         route_intent,
         {"resolve": "resolve", "chat": "chat", "clarify": "clarify",
          "task": "task"},

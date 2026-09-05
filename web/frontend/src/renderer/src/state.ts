@@ -52,6 +52,14 @@ export interface PlanStep {
   output?: string;
 }
 
+/** 对话流内的写作/实验内联状态片（doc_section / experiment SSE 事件驱动）。 */
+export interface WorkNote {
+  id: string;
+  kind: 'doc' | 'experiment';
+  text: string;
+  status: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'system';
@@ -64,6 +72,8 @@ export interface Message {
   verify?: PlanVerdictData | null;
   /** 本回合实际执行模式（mode SSE 事件）。 */
   mode?: 'react' | 'plan';
+  /** 对话中心化：写作/实验内联状态片上（按时间累积）。 */
+  workNotes?: WorkNote[];
   status: 'complete' | 'streaming' | 'aborted';
   timestamp: string;
 }
@@ -75,6 +85,10 @@ export interface ThreadMeta {
   updatedAt: string;
   /** 该对话的客户端模式偏好（按对话记忆，localStorage 持久化）。 */
   mode: AgentMode;
+  /** 对话中心化：本对话正在写的文档 / 进行的实验项目（SSE 事件归因，localStorage 持久化）。
+      供右侧工作台面板跟随对话绑定；空 = 未绑定（面板回落列表视图）。 */
+  docId?: string;
+  project?: string;
 }
 
 /**
@@ -145,6 +159,9 @@ export type Action =
   | { type: 'SET_PLAN_VERIFY'; messageId: string; verdict: PlanVerdictData }
   | { type: 'SET_MODE'; messageId: string; mode: 'react' | 'plan' }
   | { type: 'SET_THREAD_MODE'; threadId: string; mode: AgentMode }
+  | { type: 'SET_THREAD_DOC'; threadId: string; docId: string }
+  | { type: 'SET_THREAD_PROJECT'; threadId: string; project: string }
+  | { type: 'ADD_WORK_NOTE'; messageId: string; note: WorkNote }
   | { type: 'ABORT_MESSAGE'; messageId: string }
   | { type: 'SET_STREAMING'; isStreaming: boolean }
   | { type: 'SET_RIGHT_PANEL_WIDTH'; width: number }
@@ -458,6 +475,40 @@ export function appReducer(state: AppState, action: Action): AppState {
         },
       };
     }
+
+    case 'SET_THREAD_DOC': {
+      const th = state.threads[action.threadId];
+      if (!th) return state;
+      return {
+        ...state,
+        threads: {
+          ...state.threads,
+          [action.threadId]: { ...th, docId: action.docId, updatedAt: new Date().toISOString() },
+        },
+      };
+    }
+
+    case 'SET_THREAD_PROJECT': {
+      const th = state.threads[action.threadId];
+      if (!th) return state;
+      return {
+        ...state,
+        threads: {
+          ...state.threads,
+          [action.threadId]: { ...th, project: action.project, updatedAt: new Date().toISOString() },
+        },
+      };
+    }
+
+    case 'ADD_WORK_NOTE':
+      return {
+        ...state,
+        messages: state.messages.map(m =>
+          m.id === action.messageId
+            ? { ...m, workNotes: [...(m.workNotes ?? []), action.note] }
+            : m
+        ),
+      };
 
     case 'ABORT_MESSAGE':
       return {

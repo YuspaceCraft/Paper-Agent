@@ -13,14 +13,12 @@ import {
 } from './state';
 import { api, setBaseUrl, markProxyReady, streamNotify, openTaskStream, whenBackendReady, type Settings } from './api';
 
-import { TopBar, type Domain } from './components/TopBar';
+import { TopBar } from './components/TopBar';
 import { LeftPanel } from './components/LeftPanel';
 import { ChatView } from './components/ChatView';
 import { TaskCenter } from './components/TaskCenter';
-import { FileExplorer } from './components/FileExplorer';
+import { WorkspacePanel, type PanelTab } from './components/WorkspacePanel';
 import { StatusBar } from './components/StatusBar';
-import { WriterView } from './components/WriterView';
-import { ExperimentView } from './components/ExperimentView';
 
 interface AppContextType {
   state: AppState;
@@ -45,8 +43,14 @@ const App: FC = () => {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
   const [apiOnline, setApiOnline] = useState(true);
   const [backendError, setBackendError] = useState('');
-  const [domain, setDomain] = useState<Domain>('chat');
+  // 右侧工作台面板 Tab（对话中心化：由 WorkspacePanel 自身切换，不替换对话主区）
+  const [panelTab, setPanelTab] = useState<PanelTab>('files');
   const [settings, setSettings] = useState<Settings | null>(null);
+
+  // 当前对话的绑定工件（SSE 归因持久化在 ThreadMeta）
+  const activeThread = state.activeThreadId ? state.threads[state.activeThreadId] : null;
+  const boundDoc = activeThread?.docId;
+  const boundProject = activeThread?.project;
 
   // Fetch server info (papers / index / health). Called on mount and again when
   // the Electron backend reports ready (its port is only known at that point).
@@ -474,10 +478,7 @@ const App: FC = () => {
           rightPanelOpen={state.rightPanelOpen}
           onToggleLeft={() => dispatch({ type: 'TOGGLE_LEFT_PANEL' })}
           onToggleRight={() => dispatch({ type: 'TOGGLE_RIGHT_PANEL' })}
-          onUpload={handleUpload}
           apiOnline={apiOnline}
-          domain={domain}
-          onSwitchDomain={setDomain}
           settings={settings}
           onUpdatePaths={handleUpdatePaths}
         />
@@ -532,12 +533,6 @@ const App: FC = () => {
           />
 
           <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            {domain === 'write' ? (
-              <WriterView writingDir={settings?.writing_dir} />
-            ) : domain === 'experiment' ? (
-              <ExperimentView experimentsPath={settings?.experiments_path} onUpdatePaths={handleUpdatePaths} />
-            ) : (
-            <>
             <TaskCenter
               tasks={state.bgTasks}
               activeThreadId={state.activeThreadId}
@@ -571,6 +566,15 @@ const App: FC = () => {
                     if (taskId && threadId) forcedThread.current.set(taskId, threadId);
                     void syncTasks();
                   }
+                  // 对话中心化：task_dispatch 派发的子任务同样归因到父对话
+                  //（TaskCenter/右侧面板跨刷新归属用）。
+                  if (name === 'task_dispatch' && threadId) {
+                    try {
+                      const obj = JSON.parse(String(patch.result ?? ''));
+                      const tid = obj?.data?.task_id ?? obj?.task_id;
+                      if (tid) forcedThread.current.set(String(tid), threadId);
+                    } catch { /* 非 JSON 结果忽略 */ }
+                  }
                 }}
                 onPlan={(msgId, plan) => dispatch({ type: 'SET_PLAN', messageId: msgId, plan })}
                 onPlanStep={(msgId, stepId, patch) => dispatch({ type: 'UPDATE_PLAN_STEP', messageId: msgId, stepId, patch })}
@@ -578,6 +582,12 @@ const App: FC = () => {
                 onPlanVerify={(msgId, verdict) => dispatch({ type: 'SET_PLAN_VERIFY', messageId: msgId, verdict })}
                 onMode={(msgId, mode) => dispatch({ type: 'SET_MODE', messageId: msgId, mode })}
                 onSetStreaming={v => dispatch({ type: 'SET_STREAMING', isStreaming: v })}
+                onWorkNote={(msgId, note) => dispatch({ type: 'ADD_WORK_NOTE', messageId: msgId, note })}
+                onThreadBinding={(threadId, binding) => {
+                  if (binding.docId) dispatch({ type: 'SET_THREAD_DOC', threadId, docId: binding.docId });
+                  if (binding.project) dispatch({ type: 'SET_THREAD_PROJECT', threadId, project: binding.project });
+                }}
+                onUpload={handleUpload}
               />
             ) : (
               <div style={{
@@ -586,8 +596,6 @@ const App: FC = () => {
               }}>
                 👈 新建或选择一个对话开始
               </div>
-            )}
-            </>
             )}
           </main>
 
@@ -603,7 +611,15 @@ const App: FC = () => {
             onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = 'transparent'}
           />
 
-          <FileExplorer open={state.rightPanelOpen} root={domain === 'experiment' ? 'experiments' : 'project'} />
+          {state.rightPanelOpen && (
+            <WorkspacePanel
+              tab={panelTab}
+              onTab={setPanelTab}
+              docId={boundDoc}
+              project={boundProject}
+              writingDir={settings?.writing_dir}
+            />
+          )}
         </div>
 
         <StatusBar
