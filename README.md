@@ -1,4 +1,4 @@
-# Papper-Agent — 科研文献 RAG + 多 Agent 智能系统
+# Paper-Agent — 科研文献 RAG + 多 Agent 智能系统
 
 [![Python](https://img.shields.io/badge/Python-3.10-blue)](https://www.python.org/) [![LangGraph](https://img.shields.io/badge/LangGraph-0.2-green)](https://langchain-ai.github.io/langgraph/) [![FastAPI](https://img.shields.io/badge/FastAPI-teal)](https://fastapi.tiangolo.com/) [![React](https://img.shields.io/badge/React-61dafb)](https://react.dev/) [![Electron](https://img.shields.io/badge/Electron-47848f)](https://www.electronjs.org/) [![Vite](https://img.shields.io/badge/Vite-646cff)](https://vitejs.dev/) [![Qdrant](https://img.shields.io/badge/Qdrant-8B5CF6)](https://qdrant.tech/)
 
