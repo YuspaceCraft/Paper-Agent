@@ -13,6 +13,8 @@
 - **入口**：`_ensure_writing_doc(title, outline, plan_steps) → doc_id`（plan_node 建 doc + 大纲）
 - **docx 导出**：`_render_docx`（python-docx 最小 md→docx：`#/##/###` → Heading，`-` → List Bullet）
 - 写入进度经 `stream.emit("doc_section", ...)` 透出到前端（章节树打勾）
+- **实验引用（对话中心化）**：creator subagent 额外挂只读 `experiment_list /
+  read_metrics / study_context`——写实验章引用**真实指标**（不编造数值）
 
 工具表与用法见 `agent/README.md`「v10 领域扩展」与 `web/api/README.md`「创作（Creation）」。
 
@@ -27,6 +29,27 @@
 - **研究知识库**：`web/workspace/studies/{topic}/knowledge.json`；实验记录由代码
   `_study_archive` 确定性写入，LLM 只读引用（防篡改）。
 - agent/README「Coding Agent」节 + web/api/README「实验/研究知识库」节。
+
+## manifest（项目委托契约，对话中心化 L4）
+
+每个实验项目一个 `{experiments_root}/{project}/project.json`，作为主 agent / 外部
+coding agent / UI 三方共享的**持久项目契约**（零状态、机器可解析）：
+
+```json
+{ "project": "", "paper": "", "entry": {"run": "", "data": "", "config": ""},
+  "key_files": [], "metrics_schema": {}, "baseline": {},
+  "status": "draft|running|done", "last_run": "", "changed_files": [],
+  "changelog": [{"kind", "summary", "at"}], "last_commit_sha": "" }
+```
+
+- `manifest.ensure_manifest / update_manifest / log_event / load_manifest`（纯文件操作，
+  不 import coding.py，避免环）。
+- 写入钩子：`run_experiment`（status/last_run）、`delegate_code_task`
+  （changed_files/last_delegate + changelog）、`git_commit`（last_commit_sha）。
+- `set_experiment_project(project, paper, entry_run, ...)`：对话绑定项目 + 建/更新
+  manifest（文献↔实验连通的关键动作；父 agent 与 coder 均可用）。
+- `experiment_project_state(project)`：只读返回 manifest + 近期实验（creator 引用
+  实验、前端面板、父 agent 查询共用）。
 
 ## coding 连接外部 coding agent（MCP bridge 接入指引）
 

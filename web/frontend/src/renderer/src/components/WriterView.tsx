@@ -30,17 +30,17 @@ const primaryBtn: React.CSSProperties = {
   color: '#fff',
 };
 
-const colStyle: React.CSSProperties = {
+export const colStyle: React.CSSProperties = {
   display: 'flex', flexDirection: 'column',
   overflow: 'hidden', borderRight: '1px solid var(--color-border)',
 };
-const colTitle: React.CSSProperties = {
+export const colTitle: React.CSSProperties = {
   padding: '8px 12px', fontSize: 12, fontWeight: 600,
   color: 'var(--color-text-secondary)', flexShrink: 0,
   borderBottom: '1px solid var(--color-border)', background: 'var(--color-inset)',
 };
 
-const badge: (status: string) => React.CSSProperties = (status) => ({
+export const badge: (status: string) => React.CSSProperties = (status) => ({
   fontSize: 11, padding: '1px 6px', borderRadius: 10, flexShrink: 0,
   color: status === 'done' ? 'var(--color-success)' : status === 'writing' ? 'var(--color-warning)' : 'var(--color-text-tertiary)',
   background: status === 'done' ? 'rgba(74,190,110,0.15)' : status === 'writing' ? 'rgba(245,158,11,0.15)' : 'var(--color-inset)',

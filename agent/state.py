@@ -138,3 +138,11 @@ class AgentState(MessagesState):
     # 「agent / 多工具任务被 token 预算提前截断」）。
     token_budget: int = int(os.getenv("AGENT_TOKEN_BUDGET", "60000"))
     tokens_used: int = 0
+    # ---- conversation context (对话中心化重构) ----
+    # context_node 每回合确定性重建，提供对话级工作区绑定与记忆：
+    #   active_doc_id     — 本会话正在写的文档
+    #   active_project    — 本会话正在进行的实验项目
+    #   study_topic       — 本会话涉及的研究主题（study KB 键）
+    #   recent_experiments— 本会话最近运行的实验 exp_id 列表（新→旧，cap 5）
+    # 跨 turn 经 checkpointer 持久化；子 agent 保持零状态，记忆由父注入。
+    context: dict = {}

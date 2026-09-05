@@ -210,6 +210,26 @@ export const MessageList: FC<Props> = ({ messages, onSuggestion }) => {
                   <MessageSteps steps={m.steps!} />
                 </div>
               )}
+              {!!m.workNotes && m.workNotes.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, margin: '4px 0' }}>
+                  {m.workNotes.map(note => (
+                    <div key={note.id} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      fontSize: 12, padding: '3px 10px', borderRadius: 10,
+                      alignSelf: 'flex-start',
+                      color: note.status === 'done' ? 'var(--color-success)'
+                        : note.status === 'running' || note.status === 'writing' || note.status === 'created' ? 'var(--color-warning)'
+                        : 'var(--color-text-secondary)',
+                      background: note.status === 'done' ? 'rgba(74,190,110,0.12)'
+                        : note.status === 'running' || note.status === 'writing' || note.status === 'created' ? 'rgba(245,158,11,0.12)'
+                        : 'var(--color-inset)',
+                    }}>
+                      <span>{note.kind === 'doc' ? '📄' : '🧪'}</span>
+                      <span>{note.text}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {m.content && <Markdown content={m.content} />}
               {showTyping && (
                 <div className="typing-row">

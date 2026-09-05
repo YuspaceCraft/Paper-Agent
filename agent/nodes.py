@@ -359,6 +359,28 @@ def _has_prior_paper_access(state: dict) -> bool:
 
 # ---- resolved formatting ----
 
+def _format_work_context(ctx: dict) -> str:
+    """Format the conversation's workspace binding (对话中心化重构) as a compact
+    system-prompt section. Empty/unset keys are omitted — non-empty presence tells
+    the parent agent which doc/project/study this conversation is currently on."""
+    lines: list[str] = []
+    doc = ctx.get("active_doc_id")
+    if doc:
+        lines.append(f"- Active writing document: {doc}")
+    proj = ctx.get("active_project")
+    if proj:
+        lines.append(f"- Active experiment project: {proj}")
+    topic = ctx.get("study_topic")
+    if topic:
+        lines.append(f"- Study topic: {topic}")
+    exps = ctx.get("recent_experiments") or []
+    if exps:
+        lines.append(f"- This conversation's recent experiments: {', '.join(map(str, exps[:5]))}")
+    if not lines:
+        return ""
+    return "\n".join(lines)
+
+
 def _format_resolved(resolved: dict) -> str:
     """Format resolved references as Discovery Hints — clues, not facts.
 
@@ -948,6 +970,13 @@ async def agent_node(
     context = state.get("context_snapshot", "")
     if context:
         system += f"\n\n## Conversation Context (for multi-turn reference)\n{context}"
+
+    # Inject conversation workspace context (对话中心化重构): which writing doc /
+    # experiment project / study topic this conversation is currently bound to.
+    work_ctx = state.get("context", {}) or {}
+    work_lines = _format_work_context(work_ctx)
+    if work_lines:
+        system += f"\n\n## Current Work Context\n{work_lines}"
 
     # ---- token budget guard: hard stop, force final answer ----
     budget = state.get("token_budget", 0)

@@ -17,6 +17,8 @@ interface Props {
   onModeChange: (m: AgentMode) => void;
   onSend: (text: string) => void;
   onStop: () => void;
+  /** 上传 PDF（输入框内上传图标触发，取代原 TopBar 按钮）。 */
+  onUpload: (file: File) => void;
 }
 
 const MODES: Array<{ value: AgentMode; label: string; title: string }> = [
@@ -73,11 +75,25 @@ const menuItemStyle = (active: boolean): React.CSSProperties => ({
   whiteSpace: 'nowrap',
 });
 
-export const ChatInput: FC<Props> = ({ isStreaming, mode, onModeChange, onSend, onStop }) => {
+const uploadBtnStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '5px 8px',
+  border: '1px solid var(--color-border)',
+  borderRadius: 8,
+  background: 'transparent',
+  color: 'var(--color-text-secondary)',
+  cursor: 'pointer',
+  transition: 'color 0.12s, border-color 0.12s',
+};
+
+export const ChatInput: FC<Props> = ({ isStreaming, mode, onModeChange, onSend, onStop, onUpload }) => {
   const [text, setText] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const current = MODES.find(m => m.value === mode) ?? MODES[0];
 
@@ -92,13 +108,21 @@ export const ChatInput: FC<Props> = ({ isStreaming, mode, onModeChange, onSend, 
     return () => document.removeEventListener('mousedown', onDocDown);
   }, []);
 
+  /** 文本域随内容自适应增高（上限 160px，超出滚动）。 */
+  const autoResize = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, []);
+
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed || isStreaming) return;
     onSend(trimmed);
     setText('');
-    if (ref.current) ref.current.style.height = 'auto';
-  }, [text, isStreaming, onSend]);
+    requestAnimationFrame(autoResize);
+  }, [text, isStreaming, onSend, autoResize]);
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -120,62 +144,86 @@ export const ChatInput: FC<Props> = ({ isStreaming, mode, onModeChange, onSend, 
         <textarea
           ref={ref}
           value={text}
-          onChange={e => setText(e.target.value)}
+          onChange={e => {
+            setText(e.target.value);
+            autoResize();
+          }}
           onKeyDown={handleKey}
           placeholder={isStreaming ? 'Agent 正在回复中...' : '输入你的问题... (Enter 发送, Shift+Enter 换行)'}
           disabled={isStreaming}
           rows={1}
           className="composer-textarea"
         />
-        <div ref={wrapRef} style={{ position: 'relative' }}>
-          <button
-            style={currentBtnStyle(isStreaming)}
-            disabled={isStreaming}
-            onClick={() => setMenuOpen(v => !v)}
-            title={`执行模式：${current.title}\n点击选择切换`}
-            aria-label="切换执行模式"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-          >
-            <span>{current.label}</span>
-            <span style={{ fontSize: 9, opacity: 0.7 }}>{menuOpen ? '▴' : '▾'}</span>
-          </button>
-          {menuOpen && (
-            <div style={menuStyle} role="menu">
-              {MODES.map(m => (
-                <button
-                  key={m.value}
-                  style={menuItemStyle(mode === m.value)}
-                  onClick={() => handleModeClick(m.value)}
-                  title={m.title}
-                  role="menuitemradio"
-                  aria-checked={mode === m.value}
-                >
-                  <span style={{ flex: 1 }}>{m.label}</span>
-                  {mode === m.value && <span>✓</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        {isStreaming ? (
-          <button className="stop-btn" onClick={onStop} title="停止">
-            <span className="stop-icon" />
-          </button>
-        ) : (
-          <button
-            className="send-btn"
-            onClick={handleSend}
-            disabled={!canSend}
-            title="发送"
-            aria-label="发送"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 19V5" />
-              <path d="M5 12l7-7 7 7" />
+        <div className="composer-actions">
+          <button style={uploadBtnStyle} onClick={() => fileRef.current?.click()} title="上传 PDF" aria-label="上传 PDF">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 17V7" />
+              <path d="M6 11l6-6 6 6" />
+              <rect x="4" y="18" width="16" height="2" rx="1" />
             </svg>
           </button>
-        )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".pdf,application/pdf"
+            style={{ display: 'none' }}
+            onChange={e => {
+              const f = e.target.files?.[0];
+              if (f) onUpload(f);
+              e.target.value = '';
+            }}
+          />
+          <div ref={wrapRef} style={{ position: 'relative' }}>
+            <button
+              style={currentBtnStyle(isStreaming)}
+              disabled={isStreaming}
+              onClick={() => setMenuOpen(v => !v)}
+              title={`执行模式：${current.title}\n点击选择切换`}
+              aria-label="切换执行模式"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+            >
+              <span>{current.label}</span>
+              <span style={{ fontSize: 9, opacity: 0.7 }}>{menuOpen ? '▴' : '▾'}</span>
+            </button>
+            {menuOpen && (
+              <div style={menuStyle} role="menu">
+                {MODES.map(m => (
+                  <button
+                    key={m.value}
+                    style={menuItemStyle(mode === m.value)}
+                    onClick={() => handleModeClick(m.value)}
+                    title={m.title}
+                    role="menuitemradio"
+                    aria-checked={mode === m.value}
+                  >
+                    <span style={{ flex: 1 }}>{m.label}</span>
+                    {mode === m.value && <span>✓</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ flex: 1 }} />
+          {isStreaming ? (
+            <button className="stop-btn" onClick={onStop} title="停止">
+              <span className="stop-icon" />
+            </button>
+          ) : (
+            <button
+              className="send-btn"
+              onClick={handleSend}
+              disabled={!canSend}
+              title="发送"
+              aria-label="发送"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 19V5" />
+                <path d="M5 12l7-7 7 7" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

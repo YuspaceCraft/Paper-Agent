@@ -1,5 +1,15 @@
 # 前端界面设计稿
 
+> **对话中心化更新（2026-09-05，对应 docs/conversation-centric-workspace.md）**：
+> 右侧 420px 面板从「独立 PDF 阅读器 / 全屏工作区」改为 **WorkspacePanel（右侧工作台）**，
+> 三 Tab：📄 文档（DocPanel，绑定对话 active doc）/ 🧪 实验（ExperimentPanel，绑定对话
+> project）/ 📁 文件（FileExplorer）。**TopBar 的「文献问答/论文写作/实验」切换已删除**
+> （冗余——Panel 自身 Tab 承担）；Upload PDF 移入聊天输入框（ChatInput 上传图标）。
+> **对话主区永不被替换**。
+> 对话·工件绑定由 SSE 事件归因（`doc_section` / `experiment` 事件 → ThreadMeta.docId /
+> project，localStorage 持久化）。写作/实验内联状态片渲染在 assistant 气泡内
+> （Message.workNotes）。本文件下方旧设计（独立 PDF 阅读器 RightPanel）保留作参考。
+
 ## 一、页面布局
 
 ```

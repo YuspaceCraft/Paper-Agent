@@ -325,6 +325,26 @@ target="creator"）→ `_creation_plan` 里 **`_ensure_writing_doc` 建 doc + �
 cancel / interrupt→resume / 事件隔离 / task_registry 匹配 / route_intent(task_query)，
 无 LLM，worker 图用确定性假图，仅 LangGraph 原语真跑）。
 
+## v16 对话中心化（context / manifest / 工作台绑定）
+
+设计：`docs/conversation-centric-workspace.md`。落地的三层：
+
+1. **`context_node`（agent/context.py）**：每回合确定性重建 `AgentState.context`
+   `{active_doc_id, active_project, study_topic, recent_experiments}`，数据源=消息里
+   `run_experiment / set_experiment_project / study_context / doc_* / task_collect`
+   的**结构化信封** + coder summary 的 `PROJECT:`/`EXP:` footer + `state.doc_id`。
+   位置：`memory → context → route_intent`（graph.py）。`agent_node` 与
+   `plan._subagent_task`（creator/coder 任务）注入该上下文——子 agent 保持零状态。
+2. **项目 manifest（agent/domains/manifest.py）**：`{experiments_root}/{project}/project.json`
+   委托信息交换契约；`run_experiment/delegate_code_task/git_commit` 回写；
+   `set_experiment_project`（对话绑定项目，父 agent + coder 可用）、
+   `experiment_project_state`（只读，creator 引用实验 / 前端 / 父查询共用）。
+3. **实验→写作缺口**：creator subagent 增加只读 `experiment_list / read_metrics /
+   study_context`，写实验章引用**真实指标**。
+
+自检：`python agent/tests/test_context.py`（context 推导）+ `test_coding.py`
+（manifest 落盘 / run_experiment 同步 / set_experiment_project）。
+
 ## 持久化
 
 对话状态持久化到 `checkpoints.db`（项目根目录）。同一 `thread_id` 在服务器重启后继续使用。

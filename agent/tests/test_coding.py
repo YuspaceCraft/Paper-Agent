@@ -169,6 +169,44 @@ def test_coding_plan_calls_coder():
     assert out["plan"][0]["target"] == "coder"
 
 
+def test_set_experiment_project_creates_manifest(tmp_root: Path):
+    """set_experiment_project 落盘 manifest；experiment_project_state 组装读取。"""
+    _setup(tmp_root)
+    raw = json.loads(R(coding.set_experiment_project.ainvoke(
+        {"project": "RMNet-repro", "paper": "RMNet",
+         "entry_run": "python train.py"})))
+    assert raw["ok"] is True, raw
+    assert raw["data"]["bound"] is True
+    mf = raw["data"]["manifest"]
+    assert mf["project"] == "RMNet-repro"
+    assert mf["paper"] == "RMNet"
+    assert mf["entry"]["run"] == "python train.py"
+    # 幂等：重复调用不炸，更新字段
+    R(coding.set_experiment_project.ainvoke(
+        {"project": "RMNet-repro", "description": "repro the paper"}))
+    mf2 = json.loads(R(coding.experiment_project_state.ainvoke(
+        {"project": "RMNet-repro"})))
+
+    assert mf2["ok"] is True and mf2["data"]["manifest"]["description"] == "repro the paper"
+    assert mf2["data"]["project"] == "RMNet-repro"
+    assert isinstance(mf2["data"]["recent_experiments"], list)
+    # manifest 文件确实落盘
+    assert coding._project_dir("RMNet-repro").joinpath("project.json").exists()
+
+
+def test_run_experiment_updates_manifest(tmp_root: Path):
+    """run_experiment 同步 manifest status/last_run；experiment_start SSE 静默 no-op。"""
+    _setup(tmp_root)
+    cmd = "python -c \"import json; json.dump({'acc': 0.9}, open('metrics.json','w'))\""
+    exp_id = json.loads(R(coding.run_experiment.ainvoke(
+        {"project": "demo", "command": cmd})))["data"]["exp_id"]
+    _wait_exp_idle(exp_id)
+    mf = json.loads(R(coding.experiment_project_state.ainvoke({"project": "demo"})))
+    assert mf["ok"] is True
+    assert mf["data"]["manifest"]["last_run"] == exp_id
+    assert mf["data"]["manifest"]["status"] in ("done", "failed")
+
+
 def test_git_tools_when_available(tmp_root: Path):
     """git 仓库可用时 commit/diff 正常；无仓库 → 结构化错误。"""
     _setup(tmp_root)
@@ -199,6 +237,8 @@ if __name__ == "__main__":
         test_delegate_no_backend_structured_error(root)
         test_safe_project_blocks_escape(root)
         test_study_hypothesis_append(root)
+        test_set_experiment_project_creates_manifest(root)
+        test_run_experiment_updates_manifest(root)
         test_git_tools_when_available(root)
         test_parse_steps_accepts_coder_target()
         test_coding_plan_calls_coder()

@@ -61,6 +61,20 @@ async def list_experiments(project: str = ""):
     return {"experiments": _list_experiments(project or None)}
 
 
+@router.get("/{project}/manifest")
+async def project_manifest(project: str):
+    """项目 manifest（project.json，委托信息交换契约）+ 近期实验。
+
+    对话中心化重构 L4：前端实验面板用 manifest 渲染入口/key_files/baseline；
+    coding agent 侧同样读这个文件。
+    """
+    from agent.domains.coding import experiment_project_state
+    result = json.loads(await experiment_project_state.ainvoke({"project": project}))
+    if not result.get("ok"):
+        raise HTTPException(400, result.get("error", "manifest read failed"))
+    return result["data"]
+
+
 @router.post("/run", status_code=202)
 async def run(body: RunExperimentBody):
     result = json.loads(await run_experiment.ainvoke({

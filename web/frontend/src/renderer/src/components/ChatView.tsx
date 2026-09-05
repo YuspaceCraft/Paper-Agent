@@ -9,7 +9,7 @@ import { type FC, useCallback, useRef } from 'react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { streamChat, type PlanVerdict } from '../api';
-import type { AgentMode, Message, PlanStep, PlanVerdictData, ToolStep } from '../state';
+import type { AgentMode, Message, PlanStep, PlanVerdictData, ToolStep, WorkNote } from '../state';
 import { saveMessages } from '../state';
 
 interface Props {
@@ -30,6 +30,12 @@ interface Props {
   onPlanVerify: (msgId: string, verdict: PlanVerdictData) => void;
   onMode: (msgId: string, mode: 'react' | 'plan') => void;
   onSetStreaming: (v: boolean) => void;
+  /** 对话中心化：写作/实验内联状态片（doc_section / experiment SSE）。 */
+  onWorkNote: (msgId: string, note: WorkNote) => void;
+  /** 对话中心化：SSE 事件 → 对话绑定（doc_id / project），供右侧工作台跟随。 */
+  onThreadBinding: (threadId: string, binding: { docId?: string; project?: string }) => void;
+  /** 上传 PDF（输入框内上传图标触发）。 */
+  onUpload: (file: File) => void;
 }
 
 const containerStyle: React.CSSProperties = {
@@ -44,6 +50,7 @@ export const ChatView: FC<Props> = ({
   threadId, messages, isStreaming, mode, onModeChange,
   onAddMessage, onAppendToken, onFinishMessage, onAbortMessage, onToolStart, onToolEnd,
   onPlan, onPlanStep, onPlanProgress, onPlanVerify, onMode, onSetStreaming,
+  onWorkNote, onThreadBinding, onUpload,
 }) => {
   const abortRef = useRef<AbortController | null>(null);
 
@@ -94,6 +101,26 @@ export const ChatView: FC<Props> = ({
       onPlanVerify(v) {
         onPlanVerify(sysId, v as PlanVerdictData);
       },
+      onDocSection(docId, payload) {
+        onWorkNote(sysId, {
+          id: crypto.randomUUID(),
+          kind: 'doc',
+          text: payload.title
+            ? `${payload.title}${payload.section_id ? ' · ' + payload.section_id : ''}`
+            : docId,
+          status: payload.status,
+        });
+        onThreadBinding(threadId, { docId });
+      },
+      onExperiment(expId, payload) {
+        onWorkNote(sysId, {
+          id: crypto.randomUUID(),
+          kind: 'experiment',
+          text: `${payload.name || expId} · ${payload.status}${payload.exit_code !== null && payload.exit_code !== undefined ? ` (exit ${payload.exit_code})` : ''}`,
+          status: payload.status,
+        });
+        if (payload.project) onThreadBinding(threadId, { project: payload.project });
+      },
       onToken(content) {
         onAppendToken(sysId, content);
       },
@@ -106,7 +133,7 @@ export const ChatView: FC<Props> = ({
         onAbortMessage(sysId);
       },
     });
-  }, [threadId, mode, messages, onAddMessage, onAppendToken, onFinishMessage, onAbortMessage, onToolStart, onToolEnd, onPlan, onPlanStep, onPlanProgress, onPlanVerify, onMode, onSetStreaming]);
+  }, [threadId, mode, messages, onAddMessage, onAppendToken, onFinishMessage, onAbortMessage, onToolStart, onToolEnd, onPlan, onPlanStep, onPlanProgress, onPlanVerify, onMode, onSetStreaming, onWorkNote, onThreadBinding]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -119,7 +146,7 @@ export const ChatView: FC<Props> = ({
   return (
     <div style={containerStyle}>
       <MessageList messages={messages} onSuggestion={handleSend} />
-      <ChatInput isStreaming={isStreaming} mode={mode} onModeChange={onModeChange} onSend={handleSend} onStop={handleStop} />
+      <ChatInput isStreaming={isStreaming} mode={mode} onModeChange={onModeChange} onSend={handleSend} onStop={handleStop} onUpload={onUpload} />
     </div>
   );
 };

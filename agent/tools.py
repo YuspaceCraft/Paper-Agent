@@ -109,7 +109,11 @@ async def ensure_tools(mcp_config: str | Path | None = None,
                         "skill__list", "skill__load",
                         # 领导-部门制监督工具（父 agent 全量）
                         "task_dispatch", "task_progress", "task_collect",
-                        "task_resume", "task_cancel", "task_list"}
+                        "task_resume", "task_cancel", "task_list",
+                        # 对话-项目绑定（对话中心化）：父 agent 可 pin 项目 /
+                        # 查询项目 manifest（写操作隔离在 coding 工具，此处仅
+                        # 绑定+只读查询；改代码仍走 coder 子代理）
+                        "set_experiment_project", "experiment_project_state"}
         parent_tools = [t for t in _BASE_TOOLS if t.name in PARENT_NAMES]
         parent_tools += subagent_tools
 
