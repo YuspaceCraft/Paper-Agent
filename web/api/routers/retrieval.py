@@ -9,6 +9,10 @@ ponytail: thin HTTP wrapper around retrieval.RetrievalService.
 """
 from __future__ import annotations
 
+import asyncio
+import threading
+import time
+
 from fastapi import APIRouter, HTTPException
 
 from ..schemas import SearchRequest, SearchResult, SearchResponse
@@ -18,6 +22,7 @@ router = APIRouter(prefix="/api/retrieval", tags=["Retrieval"])
 # ponytail: lazy-init on first search
 _service = None
 _service_init_error: str | None = None
+_service_lock = threading.Lock()
 
 
 def _get_service():
@@ -26,28 +31,49 @@ def _get_service():
     if _service is not None:
         return _service
 
-    from pathlib import Path
-    from retrieval import RetrievalService
+    with _service_lock:
+        if _service is not None:
+            return _service
 
-    # Config paths relative to project root
-    optimal = Path("./eval_output/optimal_retrieval_config.yaml")
-    indexer = Path("./indexer/config.yaml")
-    rag = Path("./eval_output/all_rag_chunks.json")
+        from pathlib import Path
+        from retrieval import RetrievalService
 
-    if not optimal.exists():
-        _service_init_error = f"optimal config not found: {optimal}. Run evaluation first."
-        return None
+        # Config paths relative to project root
+        optimal = Path("./eval_output/optimal_retrieval_config.yaml")
+        indexer = Path("./indexer/config.yaml")
+        rag = Path("./eval_output/all_rag_chunks.json")
 
-    try:
-        _service = RetrievalService.from_config(
-            optimal_config=optimal,
-            indexer_config=indexer,
-            rag_chunks=rag if rag.exists() else None,
+        if not optimal.exists():
+            _service_init_error = (
+                f"optimal config not found: {optimal}. Run evaluation first."
+            )
+            return None
+
+        try:
+            _service = RetrievalService.from_config(
+                optimal_config=optimal,
+                indexer_config=indexer,
+                rag_chunks=rag if rag.exists() else None,
+            )
+            return _service
+        except Exception as e:
+            _service_init_error = str(e)
+            return None
+
+
+def warmup_service():
+    """Build or load the retrieval service before the first user query."""
+    started = time.perf_counter()
+    svc = _get_service()
+    elapsed_ms = round((time.perf_counter() - started) * 1000, 1)
+    if svc is not None:
+        print(
+            f"[retrieval] warmup ready in {elapsed_ms:.1f}ms "
+            f"(method={svc.method})"
         )
-        return _service
-    except Exception as e:
-        _service_init_error = str(e)
-        return None
+    else:
+        print(f"[retrieval] warmup failed in {elapsed_ms:.1f}ms: {_service_init_error}")
+    return svc
 
 
 def invalidate_retrieval_service():
@@ -57,8 +83,9 @@ def invalidate_retrieval_service():
     all_rag_chunks.json has been regenerated.
     """
     global _service, _service_init_error
-    _service = None
-    _service_init_error = None
+    with _service_lock:
+        _service = None
+        _service_init_error = None
 
 
 @router.post("/search", response_model=SearchResponse)
@@ -67,12 +94,12 @@ async def search(req: SearchRequest):
 
     支持覆盖 top_k；filters 暂未启用（策略自带 metadata_filter）。
     """
-    svc = _get_service()
+    svc = await asyncio.to_thread(_get_service)
     if svc is None:
         raise HTTPException(
             status_code=503,
             detail={
-                "ok": False,
+                "outcome": "failed",
                 "error": "Retrieval service unavailable",
                 "error_type": "service_unavailable",
                 "detail": _service_init_error or "Service not initialized",
@@ -80,7 +107,7 @@ async def search(req: SearchRequest):
             },
         )
 
-    hits = svc.search(req.query, top_k=req.top_k or None)
+    hits = await asyncio.to_thread(svc.search, req.query, req.top_k or None)
     results = [
         SearchResult(
             chunk_id=h.get("chunk_id", ""),
@@ -98,7 +125,7 @@ async def search(req: SearchRequest):
 @router.get("/config")
 async def get_config():
     """返回当前检索服务使用的策略配置。"""
-    svc = _get_service()
+    svc = await asyncio.to_thread(_get_service)
     if svc is None:
         return {
             "status": "unavailable",

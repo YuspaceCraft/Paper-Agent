@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "8c14e3b3a72ec15b76c7c03233181f78",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "7b22e0e2724b4305a793f20a880deeb6",
+    "execution_id": "f2fb5dfe8d0e4975be608182f9905a5b",
+    "thread_id": "evalqa:eval_24fa667d:qa_42710cf3",
+    "tool_name": "search_papers",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 31.000000017229468,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "9fb3c92b6112f4380a21ec7709b3e81b",
+      "sha256": "9fb3c92b6112f4380a21ec7709b3e81bf3e05d5cbbdd11488d3318e1d85e9568",
+      "bytes": 5783,
+      "chars": 5780,
+      "media_type": "application/json",
+      "tool_name": "search_papers",
+      "execution_id": "f2fb5dfe8d0e4975be608182f9905a5b",
+      "thread_id": "evalqa:eval_24fa667d:qa_42710cf3",
+      "created_at": "2026-09-19T14:02:27.808938+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\9f\\9fb3c92b6112f4380a21ec7709b3e81b.txt"
+    }
+  ],
+  "data": {
+    "results": [
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0017",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "D. Comparisons",
+        "text": "the model, and their combined effect leads to significant improvements across all evaluated metrics. The ablation study not only highlights the importance of each individual module but also underscores the potential for further performance gains through the strategic combination of these modules.\n\n## D. Comparisons  \nA comparative analysis is conducted between the proposed method and several state-of-the-art (SOTA) approaches, including DUDA [30], MCCFormers [31], RSICCformer [16], Chg2Cap [20], SEN [32], ICT-Net [33], MAF-Net [34], and RSCaMa [35].  \n1) Comparisons on the LEVIR-CC Dataset: A comprehensive evaluation of the CTM's performance on the LEVIR-CC dataset was conducted. As shown in Table IV, CTM demonstrates exceptional performa",
+        "score": 0.3689879508754851
+      },
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0020",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "D. Comparisons",
+        "text": "Fig. 8. Visualization of captioning comparing with others on the LEVIR-CC.  \n[FIGURE_DESC: Visualizes qualitative change captioning results on bitemporal remote sensing images by contrasting ground truth descriptions with outputs from RSICFormer, ICT-Net, and",
+        "score": 0.30911226908288675
+      },
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0013",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "B. Parameter Experiments",
+        "text": "the ratio of chunks ch to total matches m, scaled by gamma and exponentiated by theta to penalize disjointed alignments.  \nwhere θ , γ , and α are all hyperparameters  \n<!-- formula-not-decoded -->  \nwhere c i and S i represent the generated language description and reference sample, respectively.\n\n## B. Parameter Experiments  \nBefore conducting ablation experiments and comparison experiments, it is essential to evaluate the model's configuration. This evaluation includes measuring the number N of DLMC modules, the number M of encoder-decoder layers in the Transformer of DEDA, and the pixel radius R of the neighbor set X i surrounding pixel p i in MMBD.  \nFirst, as illustrated in Fig. 5, N and M mutually influence each other, nece",
+        "score": 0.21090530902883414
+      },
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0000",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "Cross-Temporal Remote Sensing Image Change Captioning: A Manifold Mapping and Bayesian Diffusion Approach for Land Use Monitoring",
+        "text": "## Cross-Temporal Remote Sensing Image Change Captioning: A Manifold Mapping and Bayesian Diffusion Approach for Land Use Monitoring  \n<!-- image -->  \nQingshan Bai and Xiaohua Wang  \nAbstract -This study proposes a cross-temporal remote sensing image change captioning (RSICC) model named CTM, which is constructed based on manifold mapping and Bayesian diffusion techniques. The primary objective of CTM is to enhance the accuracy and robustness of captioning changes in multitemporal remote sensing images (RSIs). The model first employs manifold mapping to model illumination variations, reducing the impact of seasonal and lighting factors on image consistency. Subsequently, Bayesiandiffusion is introduced to improve the modeling",
+        "score": 0.20848315468695466
+      },
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0024",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "E. Discussion",
+        "text": "to fully capture the hierarchical differences and dynamic variations between different features. This capability is particularly valuable for land use monitoring scenarios where slow transitions-such as gradual vegetation expansion or urban boundary shifts-require precise descriptive granularity.\n\nThird, the DEDA module improves the model's capacity to align visual and textual modalities, particularly in complex and abrupt change scenarios. Ablation results (see Table II) demonstrate that DEDA alone contributes a CIDEr increase of 0.84 and a ROUGE gain of 0.72, suggesting that this module enhances the linguistic expressiveness and semantic richness of generated captions. The visual analysis in Figs. 8 and 10 reveals that CTM can accurately desc",
+        "score": 0.19061734619689166
+      }
+    ],
+    "papers": [
+      "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and"
+    ],
+    "total": 5
+  }
+}

@@ -17,8 +17,12 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
+
+from .prompts import MEMORY_SUMMARY
+from .prompt_store import get_prompt
 
 
 # ---- token estimation ----
@@ -47,14 +51,85 @@ def _estimate_tokens(text: str) -> int:
             return len(enc.encode(text))
         except Exception:
             pass
-    return max(1, len(text) // 2)
+    # Conservative fallback when tiktoken is unavailable. CJK is close to one
+    # token per character, while Latin text is roughly four characters/token.
+    cjk = sum(
+        1
+        for ch in text
+        if "\u3400" <= ch <= "\u9fff" or "\uf900" <= ch <= "\ufaff"
+    )
+    return max(1, cjk + (len(text) - cjk) // 4)
 
 
 def _truncate_to_tokens(text: str, max_tokens: int) -> str:
-    max_chars = max_tokens * 2
+    """Truncate by the same tokenizer used for budget accounting."""
+    if max_tokens <= 0:
+        return ""
+    enc = _get_tiktoken()
+    if enc is not None:
+        try:
+            token_ids = enc.encode(text)
+            if len(token_ids) <= max_tokens:
+                return text
+            marker = "\n... (truncated)"
+            marker_ids = enc.encode(marker)
+            if len(marker_ids) >= max_tokens:
+                return enc.decode(token_ids[:max_tokens])
+            keep = max(0, max_tokens - len(marker_ids))
+            return enc.decode(token_ids[:keep]) + marker
+        except Exception:
+            pass
+
+    max_chars = max_tokens
     if len(text) <= max_chars:
         return text
-    return text[:max_chars] + "\n... (truncated)"
+    marker = "\n... (truncated)"
+    if len(marker) >= max_chars:
+        return text[:max_chars]
+    return text[:max_chars - len(marker)] + marker
+
+
+def _truncate_to_tokens_tail(text: str, max_tokens: int) -> str:
+    """Token-budget truncation that preserves the newest tail of a transcript."""
+    if max_tokens <= 0:
+        return ""
+    enc = _get_tiktoken()
+    if enc is not None:
+        try:
+            token_ids = enc.encode(text)
+            if len(token_ids) <= max_tokens:
+                return text
+            marker = "... (older content truncated)\n"
+            marker_ids = enc.encode(marker)
+            keep = max(0, max_tokens - len(marker_ids))
+            return marker + enc.decode(token_ids[-keep:]) if keep else enc.decode(
+                token_ids[-max_tokens:]
+            )
+        except Exception:
+            pass
+    if len(text) <= max_tokens:
+        return text
+    return text[-max_tokens:]
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Replace a small state file atomically so a crash cannot leave bad JSON."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    except Exception:
+        try:
+            os.unlink(temp_name)
+        except OSError:
+            pass
+        raise
 
 
 # ---- profile persistence ----
@@ -70,6 +145,7 @@ def _profile_path() -> Path:
 # profile.json is <1KB and edited rarely, so per-turn disk I/O was
 # pure waste. If multi-process writes become common, add mtime check.
 _profile_cache: dict | None = None
+_profile_mtime_ns: int | None = None
 
 
 def load_profile() -> dict:
@@ -78,47 +154,50 @@ def load_profile() -> dict:
     Cached in memory after first read. Call save_profile() to persist
     changes and invalidate the cache.
     """
-    global _profile_cache
-    if _profile_cache is not None:
-        return _profile_cache
+    global _profile_cache, _profile_mtime_ns
+    path = _profile_path()
     try:
-        _profile_cache = json.loads(_profile_path().read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
+        mtime_ns = path.stat().st_mtime_ns
+        if _profile_cache is not None and mtime_ns == _profile_mtime_ns:
+            return _profile_cache
+        _profile_cache = json.loads(path.read_text(encoding="utf-8"))
+        _profile_mtime_ns = mtime_ns
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
         _profile_cache = {}
+        _profile_mtime_ns = None
     return _profile_cache
 
 
 def save_profile(profile: dict) -> None:
     """Persist user profile and invalidate in-memory cache."""
-    global _profile_cache
-    _profile_path().write_text(
-        json.dumps(profile, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+    global _profile_cache, _profile_mtime_ns
+    path = _profile_path()
+    _atomic_write_text(
+        path, json.dumps(profile, ensure_ascii=False, indent=2),
     )
     _profile_cache = profile
+    try:
+        _profile_mtime_ns = path.stat().st_mtime_ns
+    except OSError:
+        _profile_mtime_ns = None
 
 
 # ---- LLM helper (inline to avoid circular import from nodes.py) ----
 
-async def _summarize_with_llm(prompt: str) -> str:
-    """One-shot LLM call for conversation summarization."""
-    from langchain_openai import ChatOpenAI
-    from langchain_core.messages import SystemMessage, HumanMessage
+async def _summarize_with_llm(prompt: str, config=None) -> str:
+    """One-shot LLM call for conversation summarization.
 
-    model = ChatOpenAI(
-        model=os.getenv("LLM_MODEL", "qwen-plus"),
-        temperature=0,
-        base_url=os.getenv(
-            "DASHSCOPE_BASE_URL",
-            "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        ),
-        api_key=os.getenv("DASHSCOPE_API_KEY", ""),
-        request_timeout=60.0,
-    )
-    response = await model.ainvoke([
+    config：当前节点 runnable config（LangSmith 嵌套用，可空）。
+    """
+    from langchain_core.messages import SystemMessage, HumanMessage
+    from .nodes import _get_model
+
+    model = _get_model(config or {"configurable": {}}, task="summary")
+    from evaluation.trace_wrap import traced_ainvoke
+    response = await traced_ainvoke(model, [
         SystemMessage(content="You are a precise conversation summarizer."),
         HumanMessage(content=prompt),
-    ])
+    ], node="memory", config=config)
     return response.content if hasattr(response, "content") else str(response)
 
 
@@ -141,11 +220,14 @@ class MemoryManager:
         "SUMMARY_MAX_TOKENS", str(int(SNAPSHOT_MAX_TOKENS * 0.30))))
     BUFFER_MAX_TOKENS = int(os.getenv(
         "BUFFER_MAX_TOKENS", str(int(SNAPSHOT_MAX_TOKENS * 0.50))))
+    SUMMARY_REFRESH_MESSAGES = int(os.getenv(
+        "MEMORY_SUMMARY_REFRESH_MESSAGES", "6"))
 
     # ---- public API ----
 
     def build_snapshot(
-        self, state: dict, max_tokens: int | None = None
+        self, state: dict, max_tokens: int | None = None, *,
+        include_profile: bool = True,
     ) -> str:
         """Build a compact context snapshot from conversation history.
 
@@ -154,7 +236,7 @@ class MemoryManager:
         """
         max_tokens = max_tokens or self.SNAPSHOT_MAX_TOKENS
         messages = state.get("messages", [])
-        profile = load_profile()
+        profile = load_profile() if include_profile else {}
 
         parts: list[str] = []
         tokens_used = 0
@@ -180,11 +262,49 @@ class MemoryManager:
             budget = min(
                 self.BUFFER_MAX_TOKENS, max_tokens - tokens_used - 100
             )
-            buffer_text = self._format_buffer(buffer_msgs, budget)
+            # Format with a generous character allowance, then apply the real
+            # tokenizer budget. This keeps Latin context from using only ~25%
+            # of its token allowance while the tail truncation still bounds CJK.
+            buffer_text = self._format_buffer(
+                buffer_msgs, max(budget, budget * 8),
+            )
             if buffer_text:
+                buffer_text = _truncate_to_tokens_tail(buffer_text, budget)
                 parts.append(f"## Recent Conversation\n{buffer_text}")
 
         return "\n\n".join(parts)
+
+    def build_snapshot_with_decision(
+        self, state: dict, max_tokens: int | None = None, *,
+        include_profile: bool = True,
+    ) -> tuple[str, dict]:
+        """Build a snapshot plus the budget decision used to produce it.
+
+        The snapshot string remains the only prompt payload; the accompanying
+        metadata is stored in graph state/trace for debugging and evaluation.
+        It deliberately contains no conversation text.
+        """
+        budget = max_tokens or self.SNAPSHOT_MAX_TOKENS
+        snapshot = self.build_snapshot(
+            state, max_tokens=budget, include_profile=include_profile,
+        )
+        estimated = _estimate_tokens(snapshot)
+        messages = state.get("messages", [])
+        decision = {
+            "max_tokens": budget,
+            "estimated_tokens": estimated,
+            "utilization": round(estimated / budget, 4) if budget else 0.0,
+            "message_count": len(messages),
+            "buffer_message_count": min(len(messages), self.BUFFER_SIZE),
+            "summary_used": bool(
+                len(messages) > self.BUFFER_SIZE and state.get("summary_cache", "")
+            ),
+            "profile_used": bool(load_profile()) if include_profile else False,
+            # The assembler reserves space before appending content. A near-full
+            # result therefore means a later zone was curtailed, not an overflow.
+            "truncated": estimated >= max(1, int(budget * 0.95)),
+        }
+        return snapshot, decision
 
     def needs_summary_update(self, state: dict) -> bool:
         """Check if older messages (beyond buffer) need re-summarization."""
@@ -192,10 +312,16 @@ class MemoryManager:
         if len(messages) <= self.BUFFER_SIZE:
             return False
         older_count = len(messages) - self.BUFFER_SIZE
-        through_seq = state.get("summary_through_seq", 0)
-        return older_count > through_seq
+        try:
+            through_seq = max(0, int(state.get("summary_through_seq", 0) or 0))
+        except (TypeError, ValueError):
+            through_seq = 0
+        if not state.get("summary_cache"):
+            return older_count > 0
+        uncovered = older_count - min(older_count, through_seq)
+        return uncovered >= max(1, self.SUMMARY_REFRESH_MESSAGES)
 
-    async def regenerate_summary(self, state: dict) -> str:
+    async def regenerate_summary(self, state: dict, config=None) -> str:
         """Generate/update compressed summary of messages beyond buffer.
 
         Called inline on the turn where buffer overflows (~every 6 messages).
@@ -209,22 +335,12 @@ class MemoryManager:
         # user questions + AI answers in full; tool results trimmed to header.
         older_text = self._format_for_summary(older)
 
-        prompt = f"""\
-Summarize this conversation history for a research literature assistant. Focus on:
-1. Papers discussed — names, key findings mentioned by user/agent
-2. User's explicit questions and what was answered
-3. Any unresolved or pending questions
-4. User preferences observed — language, detail level, preferred sections
-
-Existing summary (update/extend, don't repeat):
-{existing if existing else "(none — first summary)"}
-
-Conversation to summarize:
-{older_text}
-
-Output ONLY the updated summary text, no preamble. Keep under 300 words.
-Write in the same language the user has been using."""
-        return await _summarize_with_llm(prompt)
+        template = get_prompt("MEMORY_SUMMARY", MEMORY_SUMMARY)
+        prompt = template.format(
+            existing=existing if existing else "(none - first summary)",
+            older_text=older_text,
+        )
+        return await _summarize_with_llm(prompt, config=config)
 
     @staticmethod
     def _format_for_summary(messages: list, max_chars: int = 4000) -> str:
@@ -306,102 +422,144 @@ Write in the same language the user has been using."""
                        pair_aware: bool = True) -> str:
         """Format a message list as a readable transcript, respecting budget.
 
-        When pair_aware=True (default), avoids splitting these pairs across
-        the truncation boundary:
-          - AIMessage(tool_calls) ↔ ToolMessage (tool call ↔ result)
-          - HumanMessage ↔ AIMessage (Q&A)
+        Recent message groups win the budget. Groups are selected newest-first
+        (Human/AI pair or tool-call/tool-result run), then rendered in
+        chronological order. The previous oldest-first loop could spend the
+        whole budget on stale turns and then roll back the newest pair, leaving
+        only ``(earlier messages omitted)`` exactly when context was needed.
         """
-        lines: list[str] = []
-        chars = 0
+        if not messages:
+            return ""
 
-        # Pre-scan: map each message index to its pair partner index (if any).
-        # ToolMessage(n) → AIMessage(n-1) if n-1 has tool_calls.
-        # AIMessage(n, no tool_calls) → HumanMessage(n-1) for Q&A.
-        pair_of: dict[int, int] = {}  # msg_idx → partner_idx
-        for i, m in enumerate(messages):
-            if not hasattr(m, "type"):
-                continue
-            if m.type == "tool" and i > 0:
-                prev = messages[i - 1]
-                if (hasattr(prev, "type") and prev.type == "ai"
-                        and hasattr(prev, "tool_calls") and prev.tool_calls):
-                    pair_of[i] = i - 1
-                    pair_of[i - 1] = i
-            elif m.type == "ai" and i > 0:
-                has_calls = hasattr(m, "tool_calls") and m.tool_calls
-                if not has_calls:
-                    prev = messages[i - 1]
-                    if hasattr(prev, "type") and prev.type == "human":
-                        pair_of[i] = i - 1
-                        pair_of[i - 1] = i
+        def _is_human(message: Any) -> bool:
+            return getattr(message, "type", "") == "human"
 
-        last_included: int | None = None
-        for i, m in enumerate(messages):
-            role = "??"
-            if hasattr(m, "type"):
-                if m.type == "human":
-                    role = "User"
-                elif m.type == "ai":
-                    if hasattr(m, "tool_calls") and m.tool_calls:
-                        role = "Agent (tool call)"
-                    else:
-                        role = "Agent"
-                elif m.type == "tool":
-                    role = "Tool result"
-                    # If the paired AIMessage(tool_calls) was skipped (empty
-                    # content), inject a synthetic tool-call line first.
-                    # But only if there's enough budget for a meaningful
-                    # result — don't start a pair we can't finish.
-                    if pair_aware and i > 0:
-                        partner = pair_of.get(i)
-                        if partner is not None and partner == i - 1:
-                            tc_msg = messages[partner]
-                            tc_content = (
-                                tc_msg.content if hasattr(tc_msg, "content")
-                                else str(tc_msg)
-                            )
-                            if not tc_content and hasattr(tc_msg, "tool_calls"):
-                                tc_names = [tc["name"] for tc in tc_msg.tool_calls]
-                                synthetic = f"[Agent (tool call)]: calls {', '.join(tc_names)}"
-                                syn_len = len(synthetic)
-                                # Need at least 60 chars for tool result header
-                                min_pair_budget = syn_len + 60
-                                if max_chars - chars >= min_pair_budget:
-                                    lines.append(synthetic)
-                                    chars += syn_len
-                                else:
-                                    # Not enough budget for a complete pair —
-                                    # skip both synthetic TC and the TR below.
-                                    continue
-                elif m.type == "system":
+        def _is_ai(message: Any) -> bool:
+            return getattr(message, "type", "") == "ai"
+
+        def _is_tool(message: Any) -> bool:
+            return getattr(message, "type", "") == "tool"
+
+        def _has_tool_calls(message: Any) -> bool:
+            return bool(getattr(message, "tool_calls", None))
+
+        def _unitize() -> list[list[Any]]:
+            """Group messages that must not be separated by truncation."""
+            units: list[list[Any]] = []
+            index = 0
+            while index < len(messages):
+                current = messages[index]
+                if (
+                    pair_aware
+                    and _is_human(current)
+                    and index + 1 < len(messages)
+                    and _is_ai(messages[index + 1])
+                    and not _has_tool_calls(messages[index + 1])
+                ):
+                    units.append([current, messages[index + 1]])
+                    index += 2
                     continue
+                if pair_aware and _is_ai(current) and _has_tool_calls(current):
+                    unit = [current]
+                    index += 1
+                    while index < len(messages) and _is_tool(messages[index]):
+                        unit.append(messages[index])
+                        index += 1
+                    units.append(unit)
+                    continue
+                units.append([current])
+                index += 1
+            return units
 
-            content = m.content if hasattr(m, "content") else str(m)
+        def _line(message: Any) -> str:
+            role = "??"
+            if hasattr(message, "type"):
+                if message.type == "human":
+                    role = "User"
+                elif message.type == "ai":
+                    role = (
+                        "Agent (tool call)"
+                        if _has_tool_calls(message) else "Agent"
+                    )
+                elif message.type == "tool":
+                    role = "Tool result"
+                elif message.type == "system":
+                    return ""
+
+            content = (
+                message.content if hasattr(message, "content")
+                else str(message)
+            )
+            if not content and _has_tool_calls(message):
+                names = [
+                    str(call.get("name", ""))
+                    for call in message.tool_calls
+                    if isinstance(call, dict)
+                ]
+                content = f"calls {', '.join(name for name in names if name)}"
             if not content:
-                continue
+                return ""
+            return f"[{role}]: {content}"
 
-            remaining = max_chars - chars
-            if remaining <= 0:
-                # Pair-aware rollback: if the last included message is part
-                # of an incomplete pair, remove it so the LLM doesn't see
-                # orphaned tool results or answers without their question.
-                if pair_aware and last_included is not None:
-                    partner = pair_of.get(last_included)
-                    if partner is not None:
-                        is_orphan = partner > last_included
-                        if is_orphan:
-                            lines.pop()
-                lines.append("... (earlier messages omitted)")
+        def _render_unit(unit: list[Any], limit: int) -> str:
+            lines: list[str] = []
+            used = 0
+            for message in unit:
+                line = _line(message)
+                if not line:
+                    continue
+                separator = 1 if lines else 0
+                remaining = limit - used - separator
+                if remaining <= 0:
+                    break
+                if len(line) > remaining:
+                    marker = "..."
+                    keep = max(0, remaining - len(marker))
+                    line = line[:keep] + (marker if remaining >= len(marker) else "")
+                lines.append(line)
+                used += len(line) + separator
+                if line.endswith("..."):
+                    break
+            return "\n".join(lines)
+
+        units = _unitize()
+        selected: list[tuple[list[Any], str]] = []
+        remaining = max(0, int(max_chars))
+        omitted = False
+        for unit in reversed(units):
+            rendered = _render_unit(unit, remaining)
+            if not rendered:
+                omitted = True
                 break
+            cost = len(rendered) + (1 if selected else 0)
+            if cost > remaining:
+                # The newest unit may itself exceed the budget. Keep a
+                # truncated prefix rather than dropping all recent context.
+                if not selected:
+                    rendered = _render_unit(unit, remaining)
+                    if rendered:
+                        selected.append((unit, rendered))
+                omitted = True
+                break
+            selected.append((unit, rendered))
+            remaining -= cost
 
-            if len(content) > remaining:
-                content = content[:remaining] + "..."
-
-            lines.append(f"[{role}]: {content}")
-            chars += len(content)
-            last_included = i
-
-        return "\n".join(lines)
+        if not selected:
+            return "... (earlier messages omitted)"
+        selected.reverse()
+        parts = [rendered for _unit, rendered in selected]
+        if omitted:
+            parts.insert(0, "... (earlier messages omitted)")
+        output = "\n".join(parts)
+        if len(output) <= max_chars:
+            return output
+        # Preserve the newest tail if the omission marker itself consumed the
+        # tiny remaining budget.
+        if max_chars <= len("... (earlier messages omitted)"):
+            return output[-max_chars:] if max_chars else ""
+        marker = "... (earlier messages omitted)"
+        tail_size = max(0, max_chars - len(marker) - 1)
+        return f"{marker}\n{output[-tail_size:]}" if tail_size else marker
 
 
 # ---- singleton ----

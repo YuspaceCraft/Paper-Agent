@@ -1,0 +1,24 @@
+{
+  "count": 36,
+  "task_type_mix": {
+    "rag_retrieval": 9,
+    "paper_download": 9,
+    "paper_read": 9,
+    "paper_ingest": 9
+  },
+  "difficulty_mix": {
+    "easy": 12,
+    "medium": 12,
+    "hard": 12
+  },
+  "task_length_mix": {
+    "short": 12,
+    "medium": 12,
+    "long": 12
+  },
+  "retrieval_cases": 18,
+  "non_retrieval_cases": 18,
+  "stateful_cases": 18,
+  "ground_truth_refs": 22,
+  "corpus_chunks": 241
+}

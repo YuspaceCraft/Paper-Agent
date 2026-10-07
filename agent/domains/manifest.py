@@ -63,7 +63,15 @@ def _root() -> Path:
 
 def manifest_path(project: str) -> Path:
     """项目 manifest 文件路径（不创建）。project 经安全 slug。"""
-    return (_root() / _slug(project) / "project.json").resolve()
+    root = _root().resolve()
+    path = (root / _slug(project) / "project.json").resolve()
+    if path.parent == root:
+        raise PermissionError("project must name a child of experiments root")
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise PermissionError("project escapes experiments root") from exc
+    return path
 
 
 def _default(project: str) -> dict:

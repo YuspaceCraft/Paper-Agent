@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "748d3070bd2e722716f89a8269836324",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "79faff8a343042338baf16badeab0e77",
+    "execution_id": "b1dbacca92fc41c28a011f8935deb7e2",
+    "thread_id": "eval-single-7d7626",
+    "tool_name": "search_papers",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 31.000000017229468,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "4d259c9272fc7da3945cd9d4ee309d9f",
+      "sha256": "4d259c9272fc7da3945cd9d4ee309d9fcbfb090fc10d83fe7f118879e4e035d0",
+      "bytes": 5123,
+      "chars": 5122,
+      "media_type": "application/json",
+      "tool_name": "search_papers",
+      "execution_id": "b1dbacca92fc41c28a011f8935deb7e2",
+      "thread_id": "eval-single-7d7626",
+      "created_at": "2026-09-19T13:14:01.331973+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\4d\\4d259c9272fc7da3945cd9d4ee309d9f.txt"
+    }
+  ],
+  "data": {
+    "results": [
+      {
+        "chunk_id": "2003.12462v2__chunk_0005",
+        "paper": "2003.12462v2",
+        "section": "3 TextCaps Dataset",
+        "text": "a question, which is similar in spirit to TextCaps. However, the image, question and answer triplet is not directly suitable for generation of descriptive sentences. We provide additional quantitative comparisons and discussion between our and existing captioning and VQA datasets in Section 3.2.\n\n## 3 TextCaps Dataset  \nWe collect TextCaps with the goal of studying the novel task of image captioning with reading comprehension . Our dataset allows us to test captioning models' reading comprehension ability and we hope it will also enable us to teach image captioning models how 'to read', i.e. , allow us to design and train image captioning algorithms which are able to process and include information from the text in the image. In th",
+        "score": 0.28652110050494495
+      },
+      {
+        "chunk_id": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing__chunk_0020",
+        "paper": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing",
+        "section": "A. Datasets",
+        "text": "## IV. EXPERIMENTAL\n\n## A. Datasets  \nThe LEVIR MCI dataset [53] is a large-scale benchmark designed for remote sensing image change captioning tasks. It comprises 10,077 pairs of bi-temporal remote sensing images, each with a spatial resolution of 0.5 meters per pixel and a size of 256 × 256 pixels. These image pairs are sourced from 20 distinct regions in Texas, USA, capturing various urban and suburban developments over time. Each image pair is annotated with five descriptive sentences detailing the changes observed between the two time points, resulting in a total of 50,385 change captions. This dataset facilitates the development and evaluation of models that generate natural language descriptions of changes in remote sensing imagery.",
+        "score": 0.2660098622656979
+      },
+      {
+        "chunk_id": "2003.12462v2__chunk_0004",
+        "paper": "2003.12462v2",
+        "section": "2 Related work",
+        "text": "all semantic, visual, and spatial information of OCR tokens to generate high-quality captions.\n- -We conduct human evaluations on model predictions which show that there is a significant gap between the best model and humans , indicating an exciting avenue of future image captioning research.\n\n## 2 Related work  \nImage Captioning. The Flickr30k [38] and COCO Captions [9] dataset have both been collected similarly via crowd-sourcing.The COCO Captions dataset is significantly larger than Flickr30k and acts as a base for training the majority of current state-of-the-art image captioning algorithms. It includes 995,684 captions for 164,062 images. The annotators of COCO were asked 'Describe all the important parts of the sce",
+        "score": 0.2471691238553427
+      },
+      {
+        "chunk_id": "2003.12462v2__chunk_0000",
+        "paper": "2003.12462v2",
+        "section": "TextCaps: a Dataset for Image Captioning with Reading Comprehension",
+        "text": "## TextCaps: a Dataset for Image Captioning with Reading Comprehension  \nOleksii Sidorov 1 , Ronghang Hu 1 , 2 , Marcus Rohrbach 1 , and Amanpreet Singh 1  \n1 2 University of California, Berkeley  \nFacebook AI Research { oleksiis,mrf,asg } @fb.com , ronghang@eecs.berkeley.edu  \nAbstract. Image descriptions can help visually impaired people to quickly understand the image content. While we made significant progress in automatically describing images and optical character recognition, current approaches are unable to include written text in their descriptions, although text is omnipresent in human environments and frequently critical to understand our surroundings. To study how to comprehend text in the context of an image we collect a novel",
+        "score": 0.24069001529203782
+      },
+      {
+        "chunk_id": "2003.12462v2__chunk_0007",
+        "paper": "2003.12462v2",
+        "section": "",
+        "text": "Figure description: Visualizes TextCaps dataset examples containing OCR-rich scenes. The mechanism contrasts direct text transcription (underlined) with inferred paraphrasing (bold) within generated captions.",
+        "score": 0.23454724702675278
+      }
+    ],
+    "papers": [
+      "2003.12462v2",
+      "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing"
+    ],
+    "total": 5
+  }
+}

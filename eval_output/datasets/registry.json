@@ -1,0 +1,27 @@
+{
+  "agent-rag-paperops-v3": {
+    "created_at": "2026-09-19T22:35:55",
+    "path": "C:\\Users\\30811\\pre\\Demo\\eval_output\\datasets\\agent_rag_paper_ops_v3.jsonl",
+    "source": "handcrafted_v3",
+    "task_type_mix": {
+      "rag_retrieval": 9,
+      "paper_download": 9,
+      "paper_read": 9,
+      "paper_ingest": 9
+    },
+    "difficulty_mix": {
+      "easy": 12,
+      "medium": 12,
+      "hard": 12
+    },
+    "task_length_mix": {
+      "short": 12,
+      "medium": 12,
+      "long": 12
+    },
+    "retrieval_cases": 18,
+    "non_retrieval_cases": 18,
+    "stateful_cases": 18,
+    "review_status": "draft"
+  }
+}

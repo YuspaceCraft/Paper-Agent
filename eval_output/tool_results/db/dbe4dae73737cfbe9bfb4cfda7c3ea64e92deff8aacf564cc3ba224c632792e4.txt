@@ -1,0 +1,232 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "6774c0a573df47c59ac3c96ff4e7748b",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "a8e700a3ebaf4ed9967b69f1cde9d441",
+    "execution_id": "fecd7771dcab4917bca3dadffb5676f6",
+    "thread_id": "evalqa:eval_5a576970:ingest_medium_short_custom_pdf_path",
+    "tool_name": "check_paper",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 77.9999999795109,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "9efe2158f55d42aabe3e3881dcb067bf",
+      "sha256": "9efe2158f55d42aabe3e3881dcb067bfbfa3efa5b63ab874b01be81edd44c6a2",
+      "bytes": 6495,
+      "chars": 6439,
+      "media_type": "application/json",
+      "tool_name": "check_paper",
+      "execution_id": "fecd7771dcab4917bca3dadffb5676f6",
+      "thread_id": "evalqa:eval_5a576970:ingest_medium_short_custom_pdf_path",
+      "created_at": "2026-09-20T02:02:50.868353+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\9e\\9efe2158f55d42aabe3e3881dcb067bf.txt"
+    }
+  ],
+  "data": {
+    "term": "",
+    "counts": {
+      "indexed": 11,
+      "not_indexed": 26
+    },
+    "papers": [
+      {
+        "paper_name": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "state": "not_indexed",
+        "detail": "parsed"
+      },
+      {
+        "paper_name": "clinical_notes_llm",
+        "state": "indexed",
+        "detail": "indexed"
+      },
+      {
+        "paper_name": "Attention",
+        "state": "indexed",
+        "detail": "indexed"
+      },
+      {
+        "paper_name": "positional_encodings_nonessential",
+        "state": "indexed",
+        "detail": "indexed"
+      },
+      {
+        "paper_name": "2003.12462v2",
+        "state": "indexed",
+        "detail": "indexed"
+      },
+      {
+        "paper_name": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining",
+        "state": "indexed",
+        "detail": "indexed"
+      },
+      {
+        "paper_name": "CCExpert",
+        "state": "indexed",
+        "detail": "indexed"
+      },
+      {
+        "paper_name": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "state": "not_indexed",
+        "detail": "parsed"
+      },
+      {
+        "paper_name": "2022_chenyang_liu_remote_dataset",
+        "state": "indexed",
+        "detail": "indexed"
+      },
+      {
+        "paper_name": "Human_like_Object_Representation_MLLM",
+        "state": "indexed",
+        "detail": "indexed"
+      },
+      {
+        "paper_name": "Empathic_Grounding_Multimodal_LLM",
+        "state": "indexed",
+        "detail": "indexed"
+      },
+      {
+        "paper_name": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing",
+        "state": "indexed",
+        "detail": "indexed"
+      },
+      {
+        "paper_name": "llm_medqa",
+        "state": "indexed",
+        "detail": "indexed"
+      },
+      {
+        "paper_name": "A_Multi-Task_Network_and_Two_Large_Scale_Datasets",
+        "state": "not_indexed",
+        "detail": "parsed"
+      },
+      {
+        "paper_name": "Diffusion-RSCC",
+        "state": "not_indexed",
+        "detail": "parsed"
+      },
+      {
+        "paper_name": "1748942790_97836_b5916125bc8e927bcd42ba46df2a09e1",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "2502.03373_demystifying_long_cot",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "2608.27315",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "A_Decoupling_Paradigm_With_Prompt_Learning_for_Remote_Sensing_Image_Change_Captioning(1)",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "BLIP_CC",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and_Bayesian_Diffusion_Approach_for_Land_Use_Monitoring",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "DEM_super-resolution_guided_by_shaded_relief_using_attention-based_fusion",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "DEM_Super_Resolution_Guided_by_High_Resolution_Remote_Sensing_Images_Using_Multitask_Learning",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "Diffusion-RSCC_ Diffusion Probabilistic Model for Change Captioning in Remote Sensing Images(科研通-ablesci.com) (1)",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "Dynamic_and_Asymmetric_Enhancement_for_Remote_Sensing_Image_Change_Captioning",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "Enhancing Perception of Key Changes in Remote Sensing Image Change Captioning(科研通-ablesci.com)",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "Intertemporal_Interaction_and_Symmetric_Difference_Learning_for_Remote_Sensing_Image_Change_Captioning",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "J-通过 DEM 放大的快速高分辨率多感官城市洪水测绘框架",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "Kubade_AFN_Attentional_Feedback_Network_based_3D_Terrain_Super-Resolution_ACCV_2020_paper",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "Leveraging_Modal_Interaction_and_Window_Dilation_in_Attention_Network_for_Hyperspectral_and_Multispectral_Remote_Sensing_Image_F",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing_Change_Captioning",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "MV-CC",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "Pix4Cap",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "remotesensing-17-01463-v2",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "RMNet",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "Robust_Change_Captioning_in_Remote_Sensing_SECOND-CC_Dataset_and_MModalCC_Framework",
+        "state": "not_indexed",
+        "detail": "raw"
+      },
+      {
+        "paper_name": "Text-Augmented_Semantic_Feature_Extraction_and_Difference_Information_Learning_for_Remote_Sensing_Image_Change_Captioning",
+        "state": "not_indexed",
+        "detail": "raw"
+      }
+    ]
+  }
+}

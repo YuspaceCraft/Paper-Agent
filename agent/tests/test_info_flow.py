@@ -17,16 +17,20 @@ from agent.nodes import (
 # ---- P6: envelope 生成 ----
 
 def test_ok_envelope_shape():
-    raw = tc.ok({"papers": [{"arxiv_id": "2301.07093"}]})
+    raw = tc.success({"papers": [{"arxiv_id": "2301.07093"}]})
     data = json.loads(raw)
-    assert data == {"ok": True, "data": {"papers": [{"arxiv_id": "2301.07093"}]}}
+    assert data["schema_version"] == "1.0"
+    assert data["outcome"] == "succeeded"
+    assert "ok" not in data
+    assert data["data"] == {"papers": [{"arxiv_id": "2301.07093"}]}
 
 
 def test_err_envelope_shape():
-    raw = tc.err("param_error", "paper not found",
-                 "Pick from available_papers.", available_papers=["RMNet"])
+    raw = tc.failure("param_error", "paper not found",
+                     "Pick from available_papers.", available_papers=["RMNet"])
     data = json.loads(raw)
-    assert data["ok"] is False
+    assert data["outcome"] == "failed"
+    assert "ok" not in data
     assert data["error_type"] == "param_error"
     assert data["next"]
     assert data["available_papers"] == ["RMNet"]
@@ -35,18 +39,18 @@ def test_err_envelope_shape():
 # ---- P6: 解析 ----
 
 def test_parse_envelope_success():
-    r = tc.parse_tool_result('{"ok": true, "data": {"count": 3}}')
-    assert r.is_envelope and r.ok
+    r = tc.parse_tool_result('{"outcome": "succeeded", "data": {"count": 3}}')
+    assert r.is_envelope and r.outcome == "succeeded"
     assert r.data == {"count": 3}
     assert not r.text
 
 
 def test_parse_envelope_error():
     r = tc.parse_tool_result(
-        '{"ok": false, "error": "nope", "error_type": "not_found", '
+        '{"outcome": "failed", "error": "nope", "error_type": "not_found", '
         '"next": "try again", "available_papers": ["RMNet"]}'
     )
-    assert r.is_envelope and not r.ok
+    assert r.is_envelope and r.outcome == "failed"
     assert r.error == "nope"
     assert r.error_type == "not_found"
     assert r.next_action == "try again"
@@ -55,40 +59,110 @@ def test_parse_envelope_error():
 
 def test_parse_plain_text():
     r = tc.parse_tool_result("## Method (RMNet)\nbody text")
-    assert not r.is_envelope and r.ok
+    assert not r.is_envelope and r.outcome == "succeeded"
     assert r.text.startswith("## Method")
 
 
 def test_parse_json_without_ok_is_text():
-    # 文件内容恰好是合法 JSON 但无 "ok" 键 → 仍按文本处理
+    # 文件内容恰好是合法 JSON 但无顶层 outcome → 仍按文本处理
     r = tc.parse_tool_result('{"foo": 1, "bar": 2}')
-    assert not r.is_envelope and r.ok
+    assert not r.is_envelope and r.outcome == "succeeded"
     assert r.text == '{"foo": 1, "bar": 2}'
+
+
+def test_parse_nested_ok_json_is_still_text():
+    raw = '{"foo": {"ok": false}}'
+    r = tc.parse_tool_result(raw)
+    assert not r.is_envelope and r.outcome == "succeeded"
+    assert r.text == raw
+
+
+def test_parse_rejects_legacy_ok_envelope():
+    r = tc.parse_tool_result('{"ok": "false", "error": "bad"}')
+    assert r.is_envelope and r.outcome == "failed"
+    assert r.code == "TOOL_PROTOCOL_INVALID"
+    assert "legacy" in r.protocol_error
+
+
+def test_parse_rejects_malformed_envelope_instead_of_success_text():
+    r = tc.parse_tool_result('{"ok": false')
+    assert r.is_envelope and r.outcome == "failed"
+    assert r.code == "TOOL_PROTOCOL_INVALID"
 
 
 # ---- P6: 截断保持 envelope 可解析 ----
 
 def test_truncate_envelope_stays_parseable():
     long_text = "x" * 300
-    payload = {"ok": True, "data": {"paper_name": "RMNet", "chunks": [
+    payload = {"outcome": "succeeded", "data": {"paper_name": "RMNet", "chunks": [
         {"content": long_text}, {"content": long_text}, {"content": long_text},
     ]}}
     raw = json.dumps(payload, ensure_ascii=False)
     cut = tc.truncate_tool_result(raw, 600)
     assert len(cut) <= 600
     data = json.loads(cut)  # 必须仍可解析
-    assert data["ok"] is True
+    assert data["outcome"] == "succeeded"
+    assert data["meta"]["truncated"] is True
+    assert data["data"]["preview"]
+    assert data["continuation"]["shown_chars"] > 0
+
+
+def test_large_string_envelope_keeps_content_and_continuation():
+    """Regression: oversized fetch_content envelopes must not become empty."""
+    body = "".join(f"line {i}: evidence\n" for i in range(1200))
+    raw = json.dumps({
+        "schema_version": "1.0",
+        "outcome": "succeeded",
+        "operation_id": "fetch-1",
+        "kind": "tool",
+        "data": body,
+        "meta": {"tool_name": "fetch_content"},
+    }, ensure_ascii=False)
+
+    attached = tc.attach_artifact(raw, {"artifact_id": "b" * 32})
+    cut = tc.truncate_tool_result(attached, 8000)
+    data = json.loads(cut)
+    assert len(cut) <= 8000
+    assert data["outcome"] == "succeeded"
+    assert data["data"].startswith("line 0: evidence")
+    assert data["artifacts"][0]["artifact_id"] == "b" * 32
+    assert data["continuation"]["next_offset"] == len(data["data"])
+    assert data["continuation"]["artifact_id"] == "b" * 32
+    assert data["continuation"]["payload_chars"] == len(body)
+    assert "envelope dropped" not in cut
 
 
 def test_truncate_plain_text():
     long = "y" * 500
     cut = tc.truncate_tool_result(long, 200)
-    assert len(cut) <= 200 + 64
+    assert len(cut) <= 200
     assert "truncated" in cut
 
 
+def test_content_paging_returns_explicit_next_offset():
+    text = "".join(f"{i:05d}\n" for i in range(2500))
+    raw = json.dumps({
+        "schema_version": "1.0",
+        "outcome": "succeeded",
+        "data": text,
+    })
+    attached = tc.attach_artifact(raw, {"artifact_id": "a" * 32})
+    first = json.loads(tc.paginate_tool_result(
+        attached, offset=0, max_chars=6000,
+    ))
+    assert first["data"].startswith("00000")
+    assert first["continuation"]["next_offset"] == 6000
+    assert first["artifacts"][0]["artifact_id"] == "a" * 32
+
+    second = json.loads(tc.paginate_tool_result(
+        attached, offset=6000, max_chars=6000,
+    ))
+    assert second["data"]
+    assert second["continuation"]["next_offset"] == 12000
+
+
 def test_truncate_small_result_untouched():
-    raw = '{"ok": true, "data": {"n": 1}}'
+    raw = '{"outcome": "succeeded", "data": {"n": 1}}'
     assert tc.truncate_tool_result(raw, 8000) == raw
 
 

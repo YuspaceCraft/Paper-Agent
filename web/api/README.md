@@ -5,8 +5,13 @@ HTTP 接口层，薄封装 pdf_pipeline、indexer、retrieval 模块。所有业
 ## 启动
 
 ```bash
-C:/Users/30811/miniconda3/envs/demo/python.exe -m uvicorn web.api.main:app --host 0.0.0.0 --port 8000 --reload
+C:/Users/30811/miniconda3/envs/demo/python.exe -m uvicorn web.api.main:app --host 127.0.0.1 --port 8000 --reload
 ```
+
+服务默认拒绝非 loopback 客户端，默认 CORS 来源为本地 Vite 与 Electron
+`file://` 渲染器。远程部署必须显式设置 `DEMO_ALLOW_REMOTE_API=1` 和
+`DEMO_CORS_ORIGINS`，并自行在反向代理层增加认证。Electron 启动后端时会自动
+设置 `DEMO_API_TOKEN`；请求需携带 `X-Demo-Token`，SSE 可使用同名 `token` 查询参数。
 
 启动后访问自动生成的交互式文档：
 - Swagger UI: http://localhost:8000/docs

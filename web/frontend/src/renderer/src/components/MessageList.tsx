@@ -7,7 +7,7 @@
  */
 
 import { type FC, type ReactNode, useEffect, useRef } from 'react';
-import type { Message, PlanStep } from '../state';
+import type { ApprovalRequest, Message, PlanStep } from '../state';
 import { useApp } from '../state/appContext';
 import { Markdown } from './Markdown';
 import { MessageSteps } from './MessageSteps';
@@ -15,6 +15,7 @@ import { MessageSteps } from './MessageSteps';
 interface Props {
   messages: Message[];
   onSuggestion: (text: string) => void;
+  onApprovalDecision: (messageId: string, approved: boolean) => void;
 }
 
 const SUGGESTIONS = [
@@ -137,6 +138,137 @@ const VerifyBanner: FC<{ verify: Message['verify'] }> = ({ verify }) => {
   );
 };
 
+const TASK_STATUS_META: Record<string, { label: string; fg: string; bg: string }> = {
+  completed: { label: '任务完成', fg: 'var(--color-success)', bg: 'rgba(46,160,67,0.10)' },
+  partial: { label: '部分完成，可继续', fg: '#b58914', bg: 'rgba(219,171,9,0.12)' },
+  interrupted: { label: '等待人工确认', fg: '#b58914', bg: 'rgba(219,171,9,0.12)' },
+  failed: { label: '任务失败', fg: 'var(--color-danger)', bg: 'rgba(197,48,48,0.10)' },
+};
+
+const CompletionBanner: FC<{ report: Message['taskStatus'] }> = ({ report }) => {
+  if (!report) return null;
+  const meta = TASK_STATUS_META[report.status] ?? TASK_STATUS_META.failed;
+  const confidence = report.confidence;
+  return (
+    <div style={{
+      margin: '4px 0 8px',
+      padding: '6px 9px',
+      borderRadius: 6,
+      border: '1px solid var(--color-border)',
+      background: meta.bg,
+      color: meta.fg,
+      fontSize: 12,
+      lineHeight: 1.5,
+    }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <strong>{meta.label}</strong>
+        {confidence && (
+          <span style={{ opacity: 0.8 }}>
+            置信度 {confidence.level} · {Math.round(confidence.score * 100)}%
+          </span>
+        )}
+        {report.can_resume && <span style={{ marginLeft: 'auto' }}>可继续执行</span>}
+      </div>
+      {report.outstanding.length > 0 && (
+        <div style={{ marginTop: 3, opacity: 0.9 }}>
+          {report.outstanding.map(item => (
+            <div key={item.id || item.description}>
+              · {item.description || item.id}{item.reason ? ` — ${item.reason}` : ''}
+            </div>
+          ))}
+        </div>
+      )}
+      {confidence?.uncertainty_note && (
+        <div style={{ marginTop: 3, opacity: 0.85 }}>{confidence.uncertainty_note}</div>
+      )}
+    </div>
+  );
+};
+
+const ApprovalCard: FC<{
+  approval: ApprovalRequest;
+  onDecision: (approved: boolean) => void;
+}> = ({ approval, onDecision }) => {
+  const preview = approval.calls?.length
+    ? approval.calls.map(call => ({
+        tool: call.tool,
+        args: call.args?.arg_preview ?? {},
+      }))
+    : approval.args?.arg_preview;
+  const hasPreview = preview != null
+    && (typeof preview !== 'object' || Object.keys(preview).length > 0);
+  const title = approval.calls?.length
+    ? `${approval.calls.length} 个工具操作`
+    : approval.tool;
+
+  return (
+    <div style={{
+      margin: '6px 0 8px',
+      padding: '8px 10px',
+      border: '1px solid var(--color-border)',
+      borderRadius: 6,
+      background: 'var(--color-inset)',
+      fontSize: 12,
+      lineHeight: 1.5,
+    }}>
+      <div style={{ fontWeight: 600, marginBottom: 3 }}>
+        需要确认工具操作：{title}
+      </div>
+      <div style={{ color: 'var(--color-text-secondary)', marginBottom: 7 }}>
+        这是有副作用的操作。确认后才会执行；拒绝不会产生任何修改。
+      </div>
+      {hasPreview && (
+        <pre style={{
+          margin: '0 0 8px',
+          padding: '6px 8px',
+          maxHeight: 180,
+          overflow: 'auto',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          border: '1px solid var(--color-border)',
+          borderRadius: 4,
+          background: 'var(--color-bg)',
+          color: 'var(--color-text)',
+          fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace',
+          fontSize: 11,
+        }}>
+          {JSON.stringify(preview, null, 2)}
+        </pre>
+      )}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          type="button"
+          onClick={() => onDecision(true)}
+          style={{
+            padding: '3px 11px',
+            borderRadius: 4,
+            border: '1px solid var(--color-primary)',
+            background: 'var(--color-primary)',
+            color: '#fff',
+            cursor: 'pointer',
+          }}
+        >
+          批准
+        </button>
+        <button
+          type="button"
+          onClick={() => onDecision(false)}
+          style={{
+            padding: '3px 11px',
+            borderRadius: 4,
+            border: '1px solid var(--color-border)',
+            background: 'transparent',
+            color: 'var(--color-text)',
+            cursor: 'pointer',
+          }}
+        >
+          拒绝
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ---- mode badge ----
 
 const modeBadgeStyle: React.CSSProperties = {
@@ -166,7 +298,7 @@ const MessageTimestamp: FC<{ time: string; right?: boolean }> = ({ time, right }
   );
 };
 
-export const MessageList: FC<Props> = ({ messages, onSuggestion }) => {
+export const MessageList: FC<Props> = ({ messages, onSuggestion, onApprovalDecision }) => {
   const { uiConfig } = useApp();
   const bottom = useRef<HTMLDivElement>(null);
 
@@ -223,6 +355,13 @@ export const MessageList: FC<Props> = ({ messages, onSuggestion }) => {
               )}
               <PlanTodo plan={m.plan ?? []} progress={m.planProgress ?? null} />
               <VerifyBanner verify={m.verify ?? null} />
+              <CompletionBanner report={m.taskStatus ?? null} />
+              {m.approval && (
+                <ApprovalCard
+                  approval={m.approval}
+                  onDecision={approved => onApprovalDecision(m.id, approved)}
+                />
+              )}
               {hasSteps && (
                 <div className="bubble-steps">
                   <MessageSteps steps={m.steps!} defaultExpanded={uiConfig.stepsExpanded} />

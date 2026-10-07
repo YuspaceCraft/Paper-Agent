@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "3678f8bc4c9d04d53729fe19e0452fd9",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "9d6147b998b04f84a0b0d03e3d87a885",
+    "execution_id": "cc44e9b92d2d4b1f98aec7c45b1df6ff",
+    "thread_id": "evalqa:eval_24fa667d:qa_72f22ce8",
+    "tool_name": "search_papers",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 32.00000000651926,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "8f441063cc24932c9db16786ce2fe643",
+      "sha256": "8f441063cc24932c9db16786ce2fe643e43b7e1d3472ac9a93714def4a92a3f8",
+      "bytes": 6227,
+      "chars": 6221,
+      "media_type": "application/json",
+      "tool_name": "search_papers",
+      "execution_id": "cc44e9b92d2d4b1f98aec7c45b1df6ff",
+      "thread_id": "evalqa:eval_24fa667d:qa_72f22ce8",
+      "created_at": "2026-09-19T14:02:14.927951+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\8f\\8f441063cc24932c9db16786ce2fe643.txt"
+    }
+  ],
+  "data": {
+    "results": [
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0006",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "Diffusion-RSCC: Diffusion Probabilistic Model for Change Captioning in Remote Sensing Images",
+        "text": "and flexibility: The  proposed  diffusion-based  generative  model  can learn the cross-modal data distribution between the image  pairs  and  change  captions,  and  the  randomness  in diffusion models helps reduce overfitting and bring better complexity and variability to generated captions.\n\nTo sum up, our contributions are two-fold ：  \n- 1 ） The enhancement of factual correctness and flexibility: The  proposed  diffusion-based  generative  model  can learn the cross-modal data distribution between the image  pairs  and  change  captions,  and  the  randomness  in diffusion models helps reduce overfitting and bring better complexity and variability to generated captions.\n- 2 ） The  construction  of  cross-modal",
+        "score": 0.4075064222070014
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0010",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "C. Change Captioning",
+        "text": "weakly supervised change detection. SwiMDiff [53] integrated contrastive learning with a pixel-level diffusion model and has been rigorously tested on change detection.  \nAll these methods provide valuable insights for the utilization of diffusion in remote sensing image change captioning.\n\n## C. Change Captioning  \nChange captioning is an emerging task in the vision-language  community  that  extends  beyond  conventional image  or  video  captioning  by  describing  the  differences  between bi-temporal images. Unlike traditional captioning, which focuses on a single image or video frame, change captioning must  handle  the  added  complexity  of  identifying  and  articulating the changes between image pairs.  \nOther  works  fo",
+        "score": 0.28177410221018295
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0005",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "Diffusion-RSCC: Diffusion Probabilistic Model for Change Captioning in Remote Sensing Images",
+        "text": "consistently aligned with the visual content.  \nIn  this  paper,  we  propose  a  novel  probabilistic  diffusion model to capture semantic change in bi-temporal remote sensing images. The proposed framework aims to learn the mapping from the standard  Gaussian distribution to the distribution of\n\nIn  this  paper,  we  propose  a  novel  probabilistic  diffusion model to capture semantic change in bi-temporal remote sensing images. The proposed framework aims to learn the mapping from the standard  Gaussian distribution to the distribution of  \nRecently, denoising diffusion probabilistic models (DDPM) [24] have shown incredible capabilities as generative models, which  are  able  to  recre",
+        "score": 0.28021371955167956
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0031",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "D. Ablation Studies",
+        "text": "Diffusion-RSCC model performs best on traditional metrics, showcasing  the  predictions' accuracy  and  similarity with ground-truth  captions,  while  it  also  excels  in  the  newly  proposed metrics, demonstrating its capability to maintain caption consistency while enhancing text diversity.\n\n## D. Ablation Studies  \nWe performed two groups of additional ablation studies to validate the effectiveness of each proposed module in Diffusion-RSCC.  We  trained  the  models  on  the  same  LEVIR-CC dataset and evaluated the model performance from two aspects: 1) models  with different sub-structures and 2) Stacking Self-attention with different numbers of self-attention blocks. The detailed descriptions are as follows:  \nTable",
+        "score": 0.26943251719292394
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0012",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "III. METHODOLOGY",
+        "text": "Bi-temporal image features are extracted and fused via cross-mode fusion and stacking self-attention to align visual changes with textual representations. This design supports the claim of achieving superior cross-modal alignment and accurate caption generation by mitigating pixel-level noise.]\n\n## III. METHODOLOGY  \nIn this section, we propose a novel diffusion-based generative  model  for  RSICC,  as  illustrated  in  Fig.2.  The  proposed denoising diffusion probabilistic models is composed of three main  parts:  1)  the  forward  diffusion  process,  2)  the  reverse denoising process and 3) the construction of condition denoiser for CC task. The purpose of the forward diffusion process is to construct a mapping from the d",
+        "score": 0.2552939470324531
+      }
+    ],
+    "papers": [
+      "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote"
+    ],
+    "total": 5
+  }
+}

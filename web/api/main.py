@@ -20,13 +20,34 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
+import asyncio
+import ipaddress
 import json
+import os
+import secrets
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from .routers import pdf, index, retrieval, reader, agent, workspace, background, creation, experiments, study, tasks, settings, config
+from .routers import (
+    pdf,
+    index,
+    retrieval,
+    reader,
+    agent,
+    workspace,
+    background,
+    creation,
+    experiments,
+    study,
+    tasks,
+    settings,
+    config,
+    eval,
+    memory,
+)
 
 
 # ---- startup warm-up ----
@@ -79,7 +100,19 @@ def _warmup_redis():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _warmup_redis()
-    yield
+    if os.getenv("RETRIEVAL_WARMUP", "1") != "0":
+        try:
+            await asyncio.to_thread(retrieval.warmup_service)
+        except Exception as exc:  # noqa: BLE001 - warmup must not block startup
+            print(f"[retrieval] warmup skipped: {type(exc).__name__}: {exc}")
+    try:
+        yield
+    finally:
+        from agent.supervisor import shutdown_supervisor
+        from agent.tools import close_tools
+
+        await shutdown_supervisor()
+        await close_tools()
 
 
 app = FastAPI(
@@ -89,14 +122,63 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ponytail: permissive CORS for local dev; restrict origins in production
+def _cors_origins() -> list[str]:
+    raw = (os.getenv("DEMO_CORS_ORIGINS", "") or "").strip()
+    if raw:
+        return [item.strip() for item in raw.split(",") if item.strip()]
+    # Packaged Electron renderer uses a file:// origin, represented as "null".
+    return ["http://localhost:5173", "http://127.0.0.1:5173", "null"]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_origins(),
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def local_api_only(request, call_next):
+    """Keep command/file-management APIs local unless explicitly exposed."""
+    path = request.url.path
+    api_token = (os.getenv("DEMO_API_TOKEN", "") or "").strip()
+    if (
+        api_token
+        and request.method != "OPTIONS"
+        and path.startswith("/api/")
+        and path != "/api/health"
+    ):
+        presented = (
+            request.headers.get("x-demo-token", "")
+            or request.query_params.get("token", "")
+        )
+        if not presented or not secrets.compare_digest(presented, api_token):
+            return JSONResponse(
+                {"detail": "invalid API token"},
+                status_code=401,
+            )
+
+    allow_remote = (
+        os.getenv("DEMO_ALLOW_REMOTE_API", "0").strip().lower()
+        in {"1", "true", "yes", "on"}
+    )
+    if not allow_remote:
+        host = request.client.host if request.client else ""
+        try:
+            is_loopback = ipaddress.ip_address(
+                host.split("%", 1)[0]
+            ).is_loopback
+        except ValueError:
+            is_loopback = host in {"localhost", "testclient"}
+        if not is_loopback:
+            return JSONResponse(
+                {"detail": "remote API access is disabled"},
+                status_code=403,
+            )
+    return await call_next(request)
+
 
 app.include_router(pdf.router)
 app.include_router(index.router)
@@ -111,6 +193,8 @@ app.include_router(study.router)
 app.include_router(tasks.router)
 app.include_router(settings.router)
 app.include_router(config.router)
+app.include_router(eval.router)
+app.include_router(memory.router)
 
 
 @app.get("/api/health")

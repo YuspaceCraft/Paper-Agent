@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "dd9c253e3dc58eeb9c2980388641ffec",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "f462522b5d684564ba95b93612450558",
+    "execution_id": "f276a2827bc44bf9957f0e671126609d",
+    "thread_id": "evalqa:eval_24fa667d:qa_db62d8a0",
+    "tool_name": "fetch_content",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 14.999999955762178,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "c57e889b9e38d0ce28d2bdab7ecb79c8",
+      "sha256": "c57e889b9e38d0ce28d2bdab7ecb79c8d0780968d79a0edccf823faefbdc69b8",
+      "bytes": 6289,
+      "chars": 6287,
+      "media_type": "application/json",
+      "tool_name": "fetch_content",
+      "execution_id": "f276a2827bc44bf9957f0e671126609d",
+      "thread_id": "evalqa:eval_24fa667d:qa_db62d8a0",
+      "created_at": "2026-09-19T14:01:56.145067+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\c5\\c57e889b9e38d0ce28d2bdab7ecb79c8.txt"
+    }
+  ],
+  "data": "## 1 Introduction  (positional_encodings_nonessential)\n2 chunk(s)\n\nwe review the long-forgotten explanation why explicit PEs are nonessential for multi-layer autoregressive Transformers (in contrast, one-layer models require PEs to discern order information of their inputs), as well as the origin of this result, and hope to re-establish it as a common knowledge.\n\n## 1 Introduction  \nThe field of language modeling has seen new waves of interest after the promising results of GPT-2 (Radford et al., 2019), impressive capabilities of GPT-3 (Brown et al., 2020), and unprecedented versatility of ChatGPT and GPT-4 (Bubeck et al., 2023; Achiam et al., 2023), manipulating human languages in a way no machine has ever before.  \nAbout a decade before the current 'Large Language Model era' or LLM-era 1 , neural language modeling research had also seen a smaller but significant growth after Tomáš Mikolov's breakthrough results with recurrent neural network language models (Mikolov et al., 2010, 2011). This had made neural language modeling (Nakamura and Shikano, 1989; Elman, 1989; Schmidhuber and Heil, 1994; Bengio et al., 2000) a popular research topic, particularly among speech recognition and machine translation researchers as these two fields used to be the major application areas at the time when language models were not yet a standalone system- they were merely a component in a larger system with a specialized application (Jelinek et al., 1975; Brown et al., 1988), except in certain visionary work (Sutskever et al., 2011).  \n1 Here by 'LLM-era' we roughly refer to the time after GPT-3. The term 'petroplyph' in the title is a hyperbole with a double meaning: first, it highlights that results from the preLLM era are now largely regarded as 'prehistoric' and they are overlooked; second, more specifically to the positional  \nWhen the Transformer encoder-decoder architecture was shown to be successful for machine translation (Vaswani et al., 2017), several works investigated its application to build conventional (i.e., autoregressive) language models using the decoder, e.g., Liu et al. (2018); Radford et al. (2018); AlRfou et al. (2019); Dai et al. (2019); Baevski and Auli (2019), or non-autoregressive models of language using the encoder, e.g., Devlin et al. (2019); producing many methods and practical knowledge for optimizing Transformers to language modeling, concurrently to GPT-2 (Radford et al., 2019).  \nWhile the recent surge of interest in language modeling has been very exciting for the field, it has also led to some discontinuities, e.g., certain common knowledge and results from pre-LLM studies appear to have been lost amid this rapid growth.  \nThis short review focuses on one of such results, namely the property that multi-layer autoregressive Transformer language models can process sequences without explicit positional encodings (Irie et al., 2019). In fact, it is often argued that positional encodings are necessary for Transformers, because the self\n\nWe also refer back to early work on this property (Sec. 5).  \nencoding result discussed here, figures similar to Figure 1 were frequently sketched in old notes and during whiteboard discussions from that time, but such a figure was not included in the 4-page Interspeech paper (Irie et al., 2019).\n\nencoding result discussed here, figures similar to Figure 1 were frequently sketched in old notes and during whiteboard discussions from that time, but such a figure was not included in the 4-page Interspeech paper (Irie et al., 2019).  \nFigure 1: A cascade of set processors can behave as a sequence processor . An illustration of autoregressive Transformers without explicit positional encodings for two input sequences: (a, b, c) and its permutation (b, a, c). The color in the right diagram highlights the differences in terms of context seen by each layer at each position (expressed as a set). With two (or more) layers, as soon as an input is different at one position (here at the first position), autoregressive Transformers see different contexts for all later positions at the top layer. In contrast, one-layer models can not distinguish between these two input sequences (in this example, as soon as the second token is fed) even though they are strictly speaking not permutation invariant (since the context at the first position is different). Here we only swap the two first tokens; with a more 'complex' permutation, one-layer models may see different contexts at more positions but in all cases, they systematically fail to do so in the last step.  \n[FIGURE_CAPTION: Figure 1: A cascade of set processors can behave as a sequence processor . An illustration of autoregressive Transformers without explicit positional encodings for two input sequences: (a, b, c) and its permutation (b, a, c). The color in the right diagram highlights the differences in terms of context seen by each layer at each position (expressed as a set). With two (or more) layers, as soon as an input is different at one position (here at the first position), autoregressive Transformers see different contexts for all later positions at the top layer. In contrast, one-layer models can not distinguish between these two input sequences (in this example, as soon as the second token is fed) even though they are strictly speaking not permutation invariant (since the context at the first position is different). Here we only swap the two first tokens; with a more 'complex' permutation, one-layer models may see different contexts at more positions but in all cases, they systematically fail to do so in the last step.]"
+}

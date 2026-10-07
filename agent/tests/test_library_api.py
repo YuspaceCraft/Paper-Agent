@@ -37,7 +37,7 @@ def test_breaked_backend_answers_fast():
         ]:
             out = asyncio.run(tool.ainvoke(args))
             data = json.loads(out)
-            assert data.get("ok") is False, f"{tool.__name__} must not succeed while down"
+            assert data.get("outcome") == "failed", f"{tool.__name__} must not succeed while down"
             assert data.get("error_type") == "backend_down", tool.__name__
     finally:
         la._DOWN_STATE.clear()
@@ -47,6 +47,13 @@ def test_short_timeout_configured():
     t = la.api_timeout()
     assert t.connect <= 3.0, "local backend must not stall connect for a dead port"
     assert t.read >= t.connect
+
+
+def test_internal_api_headers_follow_configured_token(monkeypatch):
+    monkeypatch.delenv("DEMO_API_TOKEN", raising=False)
+    assert la.api_headers() == {}
+    monkeypatch.setenv("DEMO_API_TOKEN", "internal-token")
+    assert la.api_headers() == {"X-Demo-Token": "internal-token"}
 
 
 if __name__ == "__main__":

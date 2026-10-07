@@ -191,6 +191,10 @@ def main():
     sub.add_parser("reconcile", help="Reconcile catalog indexed flag vs vector store")
     p_reset = sub.add_parser("reset", help="Reset all state")
     p_reset.add_argument("--force", "-f", action="store_true", help="Skip confirmation prompt")
+    p_eval = sub.add_parser(
+        "eval", help="Agent 评测（等价 `python -m evaluation run|show|list|recovery|qrels|prune ...`）")
+    p_eval.add_argument("eval_args", nargs=argparse.REMAINDER,
+                        help="转发给 evaluation.__main__：run --manifest ... / show <run_id> / ...")
 
     args = parser.parse_args()
 
@@ -200,6 +204,13 @@ def main():
         cmd_reconcile()
     elif args.cmd == "status":
         cmd_status()
+    elif args.cmd == "eval":
+        # 惰性 import：避免 CLI 无评估场景时拉权重（评估包只 import 纯 stdlib/agent）
+        import sys as _sys
+        from evaluation.__main__ import main as _eval_main
+        _eval_main_args = ["evaluation"] + (args.eval_args or [])
+        _sys.argv = _eval_main_args
+        _eval_main()
     else:
         cmd_status()
 

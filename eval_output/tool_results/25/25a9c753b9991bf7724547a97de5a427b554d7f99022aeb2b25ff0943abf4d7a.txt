@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "6cdcd9987b125911eb8377b80243b641",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "894417e8484e42ba859a9943f9f102fa",
+    "execution_id": "2664627c423949baa74f358c53c9edb6",
+    "thread_id": "evalqa:eval_5a576970:read_medium_medium_ctm_clip_backbone",
+    "tool_name": "search_papers",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 0.0,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "6dc0841cd8d9438513ecf41c5ed13632",
+      "sha256": "6dc0841cd8d9438513ecf41c5ed13632b18977474fbcc3adb0138827cbace81b",
+      "bytes": 5147,
+      "chars": 5147,
+      "media_type": "application/json",
+      "tool_name": "search_papers",
+      "execution_id": "2664627c423949baa74f358c53c9edb6",
+      "thread_id": "evalqa:eval_5a576970:read_medium_medium_ctm_clip_backbone",
+      "created_at": "2026-09-20T01:58:11.691058+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\6d\\6dc0841cd8d9438513ecf41c5ed13632.txt"
+    }
+  ],
+  "data": {
+    "results": [
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0020",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "D. Comparisons",
+        "text": "Fig. 8. Visualization of captioning comparing with others on the LEVIR-CC.  \n[FIGURE_DESC: Visualizes qualitative change captioning results on bitemporal remote sensing images by contrasting ground truth descriptions with outputs from RSICFormer, ICT-Net, and",
+        "score": 0.3062913473108981
+      },
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0017",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "D. Comparisons",
+        "text": "the model, and their combined effect leads to significant improvements across all evaluated metrics. The ablation study not only highlights the importance of each individual module but also underscores the potential for further performance gains through the strategic combination of these modules.\n\n## D. Comparisons  \nA comparative analysis is conducted between the proposed method and several state-of-the-art (SOTA) approaches, including DUDA [30], MCCFormers [31], RSICCformer [16], Chg2Cap [20], SEN [32], ICT-Net [33], MAF-Net [34], and RSCaMa [35].  \n1) Comparisons on the LEVIR-CC Dataset: A comprehensive evaluation of the CTM's performance on the LEVIR-CC dataset was conducted. As shown in Table IV, CTM demonstrates exceptional performa",
+        "score": 0.23290570369610078
+      },
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0019",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "",
+        "text": "Figure description: Visualizes qualitative change captioning results on bitemporal remote sensing images by contrasting ground truth descriptions with outputs from RSICFormer, ICT-Net, and the proposed CTM. This demonstrates CTM's superior capability in generating accurate captions for semantic changes while suppressing non-substantive variations, validating the efficacy of its manifold mapping and Bayesian diffusion architecture over baselines.",
+        "score": 0.20300595421588982
+      },
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0022",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "",
+        "text": "Figure description: Visualizes qualitative change captioning results on bitemporal remote sensing images by contrasting ground truth descriptions with outputs from RSICFormer, ICT-Net, and the proposed CTM. This demonstrates CTM's superior capability in generating accurate captions for semantic changes while suppressing non-substantive variations, validating the efficacy of its manifold mapping and Bayesian diffusion architecture over baselines.",
+        "score": 0.20300595421588982
+      },
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0000",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "Cross-Temporal Remote Sensing Image Change Captioning: A Manifold Mapping and Bayesian Diffusion Approach for Land Use Monitoring",
+        "text": "## Cross-Temporal Remote Sensing Image Change Captioning: A Manifold Mapping and Bayesian Diffusion Approach for Land Use Monitoring  \n<!-- image -->  \nQingshan Bai and Xiaohua Wang  \nAbstract -This study proposes a cross-temporal remote sensing image change captioning (RSICC) model named CTM, which is constructed based on manifold mapping and Bayesian diffusion techniques. The primary objective of CTM is to enhance the accuracy and robustness of captioning changes in multitemporal remote sensing images (RSIs). The model first employs manifold mapping to model illumination variations, reducing the impact of seasonal and lighting factors on image consistency. Subsequently, Bayesiandiffusion is introduced to improve the modeling",
+        "score": 0.1948515663073581
+      }
+    ],
+    "papers": [
+      "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and"
+    ],
+    "total": 5
+  }
+}

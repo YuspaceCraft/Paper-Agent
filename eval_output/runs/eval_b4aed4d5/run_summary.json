@@ -1,0 +1,1072 @@
+{
+  "run_id": "eval_b4aed4d5",
+  "dataset_id": "sha1-fcce3239cd3e",
+  "status": "done",
+  "query_count": 5,
+  "started_at": "2026-09-20T01:35:13+00:00",
+  "finished_at": "2026-09-20T01:52:56+00:00",
+  "duration_s": 1063.3,
+  "metadata": {
+    "commit": "d37ac0f336ee",
+    "model": "qwen-plus",
+    "model_routes": {
+      "router": "qwen-plus",
+      "summary": "qwen-plus",
+      "planner": "qwen-plus",
+      "agent": "qwen-plus",
+      "verify": "qwen-plus",
+      "synthesizer": "qwen-plus",
+      "chat": "qwen-plus",
+      "subagent": "qwen-plus",
+      "notifier": "qwen-plus"
+    },
+    "config_fingerprint": "22a918db",
+    "tools_fingerprint": "d2e54be5",
+    "dataset_id": "sha1-fcce3239cd3e",
+    "ordering": "tool_call_sequence",
+    "trace_archive": "C:\\Users\\30811\\pre\\Demo\\eval_output\\runs\\eval_b4aed4d5\\trace_events.jsonl"
+  },
+  "overall": {
+    "recall@5": 0.4,
+    "precision@5": 0.08,
+    "ndcg@5": 0.4,
+    "hit@5": 0.4,
+    "recall@10": 0.44,
+    "precision@10": 0.06,
+    "ndcg@10": 0.4204,
+    "hit@10": 0.6,
+    "recall@20": 0.44,
+    "precision@20": 0.03,
+    "ndcg@20": 0.4204,
+    "hit@20": 0.6,
+    "mrr": 0.4222,
+    "tool_success_rate": 1.0,
+    "tool_calls": 21,
+    "tool_failures": 0,
+    "task_success_rate": 0.4,
+    "task_success": 2,
+    "task_degraded": 3,
+    "task_failed": 0,
+    "contract_success_rate": 0.4,
+    "contract_success": 2,
+    "contract_checks": 5,
+    "recovery_rate": null,
+    "confidence_intervals": {
+      "note": "too few queries for bootstrap (< 10)"
+    },
+    "duration_s": 1063.3,
+    "answer_latency_p50_s": 13.53,
+    "answer_latency_p95_s": 40.15,
+    "answer_latency_max_s": 40.15,
+    "cost_usd": 0.1277,
+    "tokens_total": 155765,
+    "cost_per_successful_task_usd": 0.0639,
+    "tokens_per_successful_task": 77882.5,
+    "cache_hit_rate": 0.0,
+    "cache_hits": 0,
+    "cache_calls": 21
+  },
+  "dimension": [
+    {
+      "dimension": "difficulty_level",
+      "value": "easy",
+      "count": 3,
+      "recall@5": 0.0,
+      "precision@5": 0.0,
+      "ndcg@5": 0.0,
+      "mrr": 0.037,
+      "recall@10": 0.0667,
+      "precision@10": 0.0333,
+      "ndcg@10": 0.034,
+      "recall@20": 0.0667,
+      "precision@20": 0.0167,
+      "ndcg@20": 0.034
+    },
+    {
+      "dimension": "difficulty_level",
+      "value": "medium",
+      "count": 2,
+      "recall@5": 1.0,
+      "precision@5": 0.2,
+      "ndcg@5": 1.0,
+      "mrr": 1.0,
+      "recall@10": 1.0,
+      "precision@10": 0.1,
+      "ndcg@10": 1.0,
+      "recall@20": 1.0,
+      "precision@20": 0.05,
+      "ndcg@20": 1.0
+    },
+    {
+      "dimension": "content_type",
+      "value": "unknown",
+      "count": 5,
+      "recall@5": 0.4,
+      "precision@5": 0.08,
+      "ndcg@5": 0.4,
+      "mrr": 0.4222,
+      "recall@10": 0.44,
+      "precision@10": 0.06,
+      "ndcg@10": 0.4204,
+      "recall@20": 0.44,
+      "precision@20": 0.03,
+      "ndcg@20": 0.4204
+    },
+    {
+      "dimension": "generation_mode",
+      "value": "handcrafted_task",
+      "count": 5,
+      "recall@5": 0.4,
+      "precision@5": 0.08,
+      "ndcg@5": 0.4,
+      "mrr": 0.4222,
+      "recall@10": 0.44,
+      "precision@10": 0.06,
+      "ndcg@10": 0.4204,
+      "recall@20": 0.44,
+      "precision@20": 0.03,
+      "ndcg@20": 0.4204
+    }
+  ],
+  "task_dimension": [
+    {
+      "dimension": "task_type",
+      "value": "rag_retrieval",
+      "count": 5,
+      "success": 2,
+      "task_success": 2,
+      "task_success_rate": 0.4,
+      "degraded": 3,
+      "failed": 0,
+      "tool_calls": 21,
+      "tool_failures": 0,
+      "step_count": 54,
+      "contract_checks": 5,
+      "contract_success": 2,
+      "contract_success_rate": 0.4,
+      "duration_p50_s": 13.5,
+      "duration_p95_s": 40.2,
+      "tokens_total": 155765,
+      "tokens_p50": 21212
+    },
+    {
+      "dimension": "difficulty_level",
+      "value": "easy",
+      "count": 3,
+      "success": 1,
+      "task_success": 1,
+      "task_success_rate": 0.3333,
+      "degraded": 2,
+      "failed": 0,
+      "tool_calls": 15,
+      "tool_failures": 0,
+      "step_count": 38,
+      "contract_checks": 3,
+      "contract_success": 1,
+      "contract_success_rate": 0.3333,
+      "duration_p50_s": 11.5,
+      "duration_p95_s": 40.2,
+      "tokens_total": 107830,
+      "tokens_p50": 21212
+    },
+    {
+      "dimension": "difficulty_level",
+      "value": "medium",
+      "count": 2,
+      "success": 1,
+      "task_success": 1,
+      "task_success_rate": 0.5,
+      "degraded": 1,
+      "failed": 0,
+      "tool_calls": 6,
+      "tool_failures": 0,
+      "step_count": 16,
+      "contract_checks": 2,
+      "contract_success": 1,
+      "contract_success_rate": 0.5,
+      "duration_p50_s": 13.5,
+      "duration_p95_s": 20.9,
+      "tokens_total": 47935,
+      "tokens_p50": 17395
+    },
+    {
+      "dimension": "task_length",
+      "value": "long",
+      "count": 1,
+      "success": 0,
+      "task_success": 0,
+      "task_success_rate": 0.0,
+      "degraded": 1,
+      "failed": 0,
+      "tool_calls": 10,
+      "tool_failures": 0,
+      "step_count": 24,
+      "contract_checks": 1,
+      "contract_success": 0,
+      "contract_success_rate": 0.0,
+      "duration_p50_s": 40.2,
+      "duration_p95_s": 40.2,
+      "tokens_total": 72318,
+      "tokens_p50": 72318
+    },
+    {
+      "dimension": "task_length",
+      "value": "medium",
+      "count": 2,
+      "success": 2,
+      "task_success": 2,
+      "task_success_rate": 1.0,
+      "degraded": 0,
+      "failed": 0,
+      "tool_calls": 5,
+      "tool_failures": 0,
+      "step_count": 14,
+      "contract_checks": 2,
+      "contract_success": 2,
+      "contract_success_rate": 1.0,
+      "duration_p50_s": 11.5,
+      "duration_p95_s": 13.5,
+      "tokens_total": 38607,
+      "tokens_p50": 17395
+    },
+    {
+      "dimension": "task_length",
+      "value": "short",
+      "count": 2,
+      "success": 0,
+      "task_success": 0,
+      "task_success_rate": 0.0,
+      "degraded": 2,
+      "failed": 0,
+      "tool_calls": 6,
+      "tool_failures": 0,
+      "step_count": 16,
+      "contract_checks": 2,
+      "contract_success": 0,
+      "contract_success_rate": 0.0,
+      "duration_p50_s": 9.7,
+      "duration_p95_s": 20.9,
+      "tokens_total": 44840,
+      "tokens_p50": 14300
+    },
+    {
+      "dimension": "generation_mode",
+      "value": "handcrafted_task",
+      "count": 5,
+      "success": 2,
+      "task_success": 2,
+      "task_success_rate": 0.4,
+      "degraded": 3,
+      "failed": 0,
+      "tool_calls": 21,
+      "tool_failures": 0,
+      "step_count": 54,
+      "contract_checks": 5,
+      "contract_success": 2,
+      "contract_success_rate": 0.4,
+      "duration_p50_s": 13.5,
+      "duration_p95_s": 40.2,
+      "tokens_total": 155765,
+      "tokens_p50": 21212
+    }
+  ],
+  "judge": {
+    "context_hit": null,
+    "faithfulness": null,
+    "intent_accuracy": null,
+    "sample_size": 5,
+    "dropped": {
+      "context_hit": 5,
+      "faithfulness": 5,
+      "intent_accuracy": 5
+    },
+    "model": "kimi-k2.6",
+    "drop_warning": "context_hit drop rate >10% (5/5)"
+  },
+  "badcases": [
+    {
+      "query_id": "rag_easy_short_attention_bleu",
+      "query": "Attention Is All You Need 在 WMT 2014 英德翻译任务上报告的 BLEU 是多少？",
+      "task_type": "rag_retrieval",
+      "task_length": "short",
+      "difficulty_level": "easy",
+      "content_type": "unknown",
+      "generation_mode": "handcrafted_task",
+      "retrieval_enabled": true,
+      "ground_truth_ids": [
+        "Attention__chunk_0002"
+      ],
+      "recall@5": 0.0,
+      "precision@5": 0.0,
+      "ndcg@5": 0.0,
+      "hit@5": 0.0,
+      "recall@10": 0.0,
+      "precision@10": 0.0,
+      "ndcg@10": 0.0,
+      "hit@10": 0.0,
+      "recall@20": 0.0,
+      "precision@20": 0.0,
+      "ndcg@20": 0.0,
+      "hit@20": 0.0,
+      "mrr": 0.0,
+      "success": false,
+      "status": "degraded",
+      "task_error": "contract failed: required_tool:search_papers, budget:tokens_total",
+      "has_answer": true,
+      "answer_length": 69,
+      "verification_status": "n/a",
+      "tool_calls": 2,
+      "tool_failures": 0,
+      "severity": 0,
+      "trace_id": "eval_b4aed4d5:rag_easy_short_attention_bleu",
+      "tool_errors": 0,
+      "step_count": 6,
+      "duration_s": 9.7,
+      "answer": "根据《Attention Is All You Need》论文的摘要，该模型在WMT 2014英德翻译任务上取得了28.4的BLEU分数。",
+      "intent": "literature_search",
+      "prompt_tokens": 14224,
+      "completion_tokens": 76,
+      "tokens_total": 14300,
+      "cost_usd": 0.0118,
+      "contract_enabled": true,
+      "contract_success": false,
+      "contract_checks_passed": 4,
+      "contract_checks_total": 6,
+      "contract_success_rate": 0.6667,
+      "contract_failures": [
+        {
+          "name": "required_tool:search_papers",
+          "passed": false,
+          "detail": "calls=['check_paper', 'fetch_content']"
+        },
+        {
+          "name": "budget:tokens_total",
+          "passed": false,
+          "detail": "14300>12000"
+        }
+      ],
+      "contract_checks": [
+        {
+          "name": "required_tool:search_papers",
+          "passed": false,
+          "detail": "calls=['check_paper', 'fetch_content']"
+        },
+        {
+          "name": "answer_contains:28.4",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "budget:duration_s",
+          "passed": true,
+          "detail": "9.7>90"
+        },
+        {
+          "name": "budget:tool_calls",
+          "passed": true,
+          "detail": "2>3"
+        },
+        {
+          "name": "budget:step_count",
+          "passed": true,
+          "detail": "6>8"
+        },
+        {
+          "name": "budget:tokens_total",
+          "passed": false,
+          "detail": "14300>12000"
+        }
+      ],
+      "postcondition_checks": 0,
+      "category": "task_fail"
+    },
+    {
+      "query_id": "rag_easy_medium_textcaps_scale",
+      "query": "TextCaps 数据集包含多少张图像和多少条 caption？请给出规模。",
+      "task_type": "rag_retrieval",
+      "task_length": "medium",
+      "difficulty_level": "easy",
+      "content_type": "unknown",
+      "generation_mode": "handcrafted_task",
+      "retrieval_enabled": true,
+      "ground_truth_ids": [
+        "2003.12462v2__chunk_0006"
+      ],
+      "recall@5": 0.0,
+      "precision@5": 0.0,
+      "ndcg@5": 0.0,
+      "hit@5": 0.0,
+      "recall@10": 0.0,
+      "precision@10": 0.0,
+      "ndcg@10": 0.0,
+      "hit@10": 0.0,
+      "recall@20": 0.0,
+      "precision@20": 0.0,
+      "ndcg@20": 0.0,
+      "hit@20": 0.0,
+      "mrr": 0.0,
+      "success": true,
+      "status": "ok",
+      "task_error": "",
+      "has_answer": true,
+      "answer_length": 289,
+      "verification_status": "n/a",
+      "tool_calls": 3,
+      "tool_failures": 0,
+      "severity": 0,
+      "trace_id": "eval_b4aed4d5:rag_easy_medium_textcaps_scale",
+      "tool_errors": 0,
+      "step_count": 8,
+      "duration_s": 11.5,
+      "answer": "TextCaps 数据集共包含 **28,408 张图像** 和 **145,329 条 caption**（每张图像平均约 5 条人工标注的 caption）。\n\n该数据集基于 Open Images v3 的子集，图像划分与 TextVQA 一致：\n- 训练集：21,953 张图像  \n- 验证集：3,166 张图像  \n- 测试集：3,289 张图像  \n\n数据来源论文为：  \n**\"TextCaps: A Dataset for Image Captioning with Reading Comprehension\"** (arXiv:2003.12462v2)。",
+      "intent": "literature_search",
+      "prompt_tokens": 21116,
+      "completion_tokens": 96,
+      "tokens_total": 21212,
+      "cost_usd": 0.0174,
+      "contract_enabled": true,
+      "contract_success": true,
+      "contract_checks_passed": 8,
+      "contract_checks_total": 8,
+      "contract_success_rate": 1.0,
+      "contract_failures": [],
+      "contract_checks": [
+        {
+          "name": "required_tool:search_papers",
+          "passed": true,
+          "detail": "calls=['fetch_content', 'search_papers']"
+        },
+        {
+          "name": "required_tool:fetch_content",
+          "passed": true,
+          "detail": "calls=['fetch_content', 'search_papers']"
+        },
+        {
+          "name": "answer_contains:28,408",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "answer_contains:145,329",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "budget:duration_s",
+          "passed": true,
+          "detail": "11.5>180"
+        },
+        {
+          "name": "budget:tool_calls",
+          "passed": true,
+          "detail": "3>6"
+        },
+        {
+          "name": "budget:step_count",
+          "passed": true,
+          "detail": "8>16"
+        },
+        {
+          "name": "budget:tokens_total",
+          "passed": true,
+          "detail": "21212>24000"
+        }
+      ],
+      "postcondition_checks": 0,
+      "category": "retrieval_fail"
+    },
+    {
+      "query_id": "rag_easy_long_remote_sensing_survey",
+      "query": "从本地知识库中找出至少 5 篇遥感图像变化描述论文，逐篇说明核心方法。",
+      "task_type": "rag_retrieval",
+      "task_length": "long",
+      "difficulty_level": "easy",
+      "content_type": "unknown",
+      "generation_mode": "handcrafted_task",
+      "retrieval_enabled": true,
+      "ground_truth_ids": [
+        "2022_chenyang_liu_remote_dataset__chunk_0000",
+        "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0005",
+        "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0005",
+        "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining__chunk_0010",
+        "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing__chunk_0010"
+      ],
+      "recall@5": 0.0,
+      "precision@5": 0.0,
+      "ndcg@5": 0.0,
+      "hit@5": 0.0,
+      "recall@10": 0.2,
+      "precision@10": 0.1,
+      "ndcg@10": 0.1021,
+      "hit@10": 1.0,
+      "recall@20": 0.2,
+      "precision@20": 0.05,
+      "ndcg@20": 0.1021,
+      "hit@20": 1.0,
+      "mrr": 0.1111,
+      "success": false,
+      "status": "degraded",
+      "task_error": "verification=no_evidence",
+      "has_answer": true,
+      "answer_length": 1164,
+      "verification_status": "no_evidence",
+      "tool_calls": 10,
+      "tool_failures": 0,
+      "severity": 0,
+      "trace_id": "eval_b4aed4d5:rag_easy_long_remote_sensing_survey",
+      "tool_errors": 0,
+      "step_count": 24,
+      "duration_s": 40.2,
+      "answer": "根据本地知识库检索结果，目前**仅能确认并获取完整方法描述的遥感图像变化描述（RSICC）论文共3篇**。其余匹配项（如“Cross-Temporal Remote Sensing Image Change Captioning”“Diffusion-RSCC”同名变体等）虽在检索中出现，但因未成功下载、未索引或内容不完整，**无法提取其核心方法**。以下为已确认的3篇论文及其核心方法（严格依据工具返回的摘要与方法节内容）：\n\n1. **Diffusion-RSCC: Diffusion Probabilistic Model for Change Captioning in Remote Sensing Images**  \n   提出基于扩散概率模型的RSICC方法：① 构建前向扩散过程，将离散词嵌入映射至标准高斯分布；② 设计条件去噪器（condition denoiser），融合双时相图像特征与文本表示；③ 在反向过程中引入跨模态融合模块和堆叠自注意力（SSA）模块，逐步从噪声中生成语义准确的变化描述。\n\n2. **Mask Approximation Net: A Novel Diffusion Model Approach for Remote Sensing Change Captioning**  \n   采用两阶段扩散范式：① **掩膜近似阶段**：先用多尺度变化检测模块生成初始变化掩膜，再通过UNet结构的去噪网络（MaskApproxNet）对其进行迭代 refine；② **文本解码阶段**：将 refined 掩膜特征输入文本解码器生成描述；③ 引入频域引导的复数滤波模块，在扩散过程中抑制高频噪声。\n\n3. **SAM Guided Semantic and Motion Changed Region Mining for Remote Sensing Change Captioning**  \n   基于SAM基础模型增强区域感知能力：① 使用CNN/Transformer提取全局视觉特征；② 利用SAM模型分别定位**运动级变化区域**（通过光流或差分）和**语义级变化区域**（通过分割掩膜）；③ 构建遥感变化知识图谱，显式建模地物对象关系；④ 通过交叉注意力融合多源信息（全局特征、SAM区域、知识图谱），由Transformer解码器生成最终描述。\n\n其余匹配论文（如Park et al. [33] 的Dual Dynamic Attention Model、Hoxha et al. [34] 的早期/晚期特征融合、Chouaf et al. [35] 的早期探索等）仅在相关工作综述中被提及，**本地知识库未提供其全文或方法细节，故无法陈述其核心方法**。",
+      "intent": "literature_search",
+      "prompt_tokens": 71768,
+      "completion_tokens": 550,
+      "tokens_total": 72318,
+      "cost_usd": 0.0588,
+      "contract_enabled": true,
+      "contract_success": false,
+      "contract_checks_passed": 6,
+      "contract_checks_total": 10,
+      "contract_success_rate": 0.6,
+      "contract_failures": [
+        {
+          "name": "answer_contains:RSICCformer",
+          "passed": false,
+          "detail": ""
+        },
+        {
+          "name": "answer_contains:CTM",
+          "passed": false,
+          "detail": ""
+        },
+        {
+          "name": "answer_contains:SAGE-CC",
+          "passed": false,
+          "detail": ""
+        },
+        {
+          "name": "budget:tokens_total",
+          "passed": false,
+          "detail": "72318>48000"
+        }
+      ],
+      "contract_checks": [
+        {
+          "name": "required_tool:search_papers",
+          "passed": true,
+          "detail": "calls=['artifact_read', 'check_paper', 'fetch_content', 'search_papers']"
+        },
+        {
+          "name": "required_tool:fetch_content",
+          "passed": true,
+          "detail": "calls=['artifact_read', 'check_paper', 'fetch_content', 'search_papers']"
+        },
+        {
+          "name": "answer_contains:RSICCformer",
+          "passed": false,
+          "detail": ""
+        },
+        {
+          "name": "answer_contains:Diffusion-RSCC",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "answer_contains:CTM",
+          "passed": false,
+          "detail": ""
+        },
+        {
+          "name": "answer_contains:SAGE-CC",
+          "passed": false,
+          "detail": ""
+        },
+        {
+          "name": "budget:duration_s",
+          "passed": true,
+          "detail": "40.2>420"
+        },
+        {
+          "name": "budget:tool_calls",
+          "passed": true,
+          "detail": "10>12"
+        },
+        {
+          "name": "budget:step_count",
+          "passed": true,
+          "detail": "24>30"
+        },
+        {
+          "name": "budget:tokens_total",
+          "passed": false,
+          "detail": "72318>48000"
+        }
+      ],
+      "postcondition_checks": 0,
+      "category": "task_fail"
+    },
+    {
+      "query_id": "rag_medium_short_ctm_whu_metrics",
+      "query": "CTM 在 WHU-CDC 上的 BLEU-4、METEOR 和 CIDEr 分别是多少？",
+      "task_type": "rag_retrieval",
+      "task_length": "short",
+      "difficulty_level": "medium",
+      "content_type": "unknown",
+      "generation_mode": "handcrafted_task",
+      "retrieval_enabled": true,
+      "ground_truth_ids": [
+        "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0020"
+      ],
+      "recall@5": 1.0,
+      "precision@5": 0.2,
+      "ndcg@5": 1.0,
+      "hit@5": 1.0,
+      "recall@10": 1.0,
+      "precision@10": 0.1,
+      "ndcg@10": 1.0,
+      "hit@10": 1.0,
+      "recall@20": 1.0,
+      "precision@20": 0.05,
+      "ndcg@20": 1.0,
+      "hit@20": 1.0,
+      "mrr": 1.0,
+      "success": false,
+      "status": "degraded",
+      "task_error": "contract failed: budget:tool_calls, budget:step_count, budget:tokens_total",
+      "has_answer": true,
+      "answer_length": 212,
+      "verification_status": "n/a",
+      "tool_calls": 4,
+      "tool_failures": 0,
+      "severity": 0,
+      "trace_id": "eval_b4aed4d5:rag_medium_short_ctm_whu_metrics",
+      "tool_errors": 0,
+      "step_count": 10,
+      "duration_s": 20.9,
+      "answer": "在\"Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and\"论文的\"D. Comparisons\"部分，我找到了CTM在WHU-CDC数据集上的具体评估结果：\n\n- BLEU-4: 72.36\n- METEOR: 46.98\n- CIDEr: 153.29\n\n这些数值是在WHU-CDC数据集上获得的，完全符合用户查询的要求。",
+      "intent": "literature_search",
+      "prompt_tokens": 30224,
+      "completion_tokens": 316,
+      "tokens_total": 30540,
+      "cost_usd": 0.0251,
+      "contract_enabled": true,
+      "contract_success": false,
+      "contract_checks_passed": 6,
+      "contract_checks_total": 9,
+      "contract_success_rate": 0.6667,
+      "contract_failures": [
+        {
+          "name": "budget:tool_calls",
+          "passed": false,
+          "detail": "4>3"
+        },
+        {
+          "name": "budget:step_count",
+          "passed": false,
+          "detail": "10>8"
+        },
+        {
+          "name": "budget:tokens_total",
+          "passed": false,
+          "detail": "30540>12000"
+        }
+      ],
+      "contract_checks": [
+        {
+          "name": "required_tool:search_papers",
+          "passed": true,
+          "detail": "calls=['fetch_content', 'search_papers']"
+        },
+        {
+          "name": "required_tool:fetch_content",
+          "passed": true,
+          "detail": "calls=['fetch_content', 'search_papers']"
+        },
+        {
+          "name": "answer_contains:72.36",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "answer_contains:46.98",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "answer_contains:153.29",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "budget:duration_s",
+          "passed": true,
+          "detail": "20.9>90"
+        },
+        {
+          "name": "budget:tool_calls",
+          "passed": false,
+          "detail": "4>3"
+        },
+        {
+          "name": "budget:step_count",
+          "passed": false,
+          "detail": "10>8"
+        },
+        {
+          "name": "budget:tokens_total",
+          "passed": false,
+          "detail": "30540>12000"
+        }
+      ],
+      "postcondition_checks": 0,
+      "category": "task_fail"
+    }
+  ],
+  "tool_metrics": {
+    "per_tool": {
+      "fetch_content": {
+        "calls": 12,
+        "succeeded": 12,
+        "success_rate": 1.0,
+        "p50_ms": 31.0,
+        "p95_ms": 47.0,
+        "max_ms": 47.0,
+        "error_types": {
+          "succeeded": 12
+        }
+      },
+      "search_papers": {
+        "calls": 4,
+        "succeeded": 4,
+        "success_rate": 1.0,
+        "p50_ms": 47.0,
+        "p95_ms": 63.0,
+        "max_ms": 63.0,
+        "error_types": {
+          "succeeded": 4
+        }
+      },
+      "artifact_read": {
+        "calls": 3,
+        "succeeded": 3,
+        "success_rate": 1.0,
+        "p50_ms": 22.6,
+        "p95_ms": 22.6,
+        "max_ms": 22.6,
+        "error_types": {
+          "succeeded": 3
+        }
+      },
+      "check_paper": {
+        "calls": 2,
+        "succeeded": 2,
+        "success_rate": 1.0,
+        "p50_ms": 63.0,
+        "p95_ms": 63.0,
+        "max_ms": 63.0,
+        "error_types": {
+          "succeeded": 2
+        }
+      }
+    },
+    "per_mode": {
+      "dispatcher": {
+        "calls": 21,
+        "succeeded": 21,
+        "success_rate": 1.0,
+        "p50_ms": 31.0,
+        "p95_ms": 63.0,
+        "max_ms": 63.0,
+        "error_types": {
+          "succeeded": 21
+        }
+      }
+    },
+    "badcases": [],
+    "overall": {
+      "calls": 21,
+      "succeeded": 21,
+      "success_rate": 1.0,
+      "p50_ms": 31.0,
+      "p95_ms": 63.0,
+      "errors": 0
+    }
+  },
+  "task_metrics": {
+    "count": 5,
+    "success": 2,
+    "task_success": 2,
+    "task_success_rate": 0.4,
+    "degraded": 3,
+    "failed": 0,
+    "tool_calls": 21,
+    "tool_failures": 0,
+    "step_count": 54,
+    "contract_checks": 5,
+    "contract_success": 2,
+    "contract_success_rate": 0.4,
+    "duration_p50_s": 13.5,
+    "duration_p95_s": 40.2,
+    "tokens_total": 155765,
+    "tokens_p50": 21212,
+    "failed_queries": [
+      "rag_easy_short_attention_bleu",
+      "rag_easy_long_remote_sensing_survey",
+      "rag_medium_short_ctm_whu_metrics"
+    ],
+    "failures": [
+      {
+        "query_id": "rag_easy_short_attention_bleu",
+        "status": "degraded",
+        "category": "task_fail",
+        "reason": "contract failed: required_tool:search_papers, budget:tokens_total",
+        "contract_failures": [
+          "required_tool:search_papers",
+          "budget:tokens_total"
+        ],
+        "tool_failures": 0
+      },
+      {
+        "query_id": "rag_easy_long_remote_sensing_survey",
+        "status": "degraded",
+        "category": "task_fail",
+        "reason": "verification=no_evidence",
+        "contract_failures": [
+          "answer_contains:RSICCformer",
+          "answer_contains:CTM",
+          "answer_contains:SAGE-CC",
+          "budget:tokens_total"
+        ],
+        "tool_failures": 0
+      },
+      {
+        "query_id": "rag_medium_short_ctm_whu_metrics",
+        "status": "degraded",
+        "category": "task_fail",
+        "reason": "contract failed: budget:tool_calls, budget:step_count, budget:tokens_total",
+        "contract_failures": [
+          "budget:tool_calls",
+          "budget:step_count",
+          "budget:tokens_total"
+        ],
+        "tool_failures": 0
+      }
+    ],
+    "recovery_rate": null,
+    "dimension": [
+      {
+        "dimension": "task_type",
+        "value": "rag_retrieval",
+        "count": 5,
+        "success": 2,
+        "task_success": 2,
+        "task_success_rate": 0.4,
+        "degraded": 3,
+        "failed": 0,
+        "tool_calls": 21,
+        "tool_failures": 0,
+        "step_count": 54,
+        "contract_checks": 5,
+        "contract_success": 2,
+        "contract_success_rate": 0.4,
+        "duration_p50_s": 13.5,
+        "duration_p95_s": 40.2,
+        "tokens_total": 155765,
+        "tokens_p50": 21212
+      },
+      {
+        "dimension": "difficulty_level",
+        "value": "easy",
+        "count": 3,
+        "success": 1,
+        "task_success": 1,
+        "task_success_rate": 0.3333,
+        "degraded": 2,
+        "failed": 0,
+        "tool_calls": 15,
+        "tool_failures": 0,
+        "step_count": 38,
+        "contract_checks": 3,
+        "contract_success": 1,
+        "contract_success_rate": 0.3333,
+        "duration_p50_s": 11.5,
+        "duration_p95_s": 40.2,
+        "tokens_total": 107830,
+        "tokens_p50": 21212
+      },
+      {
+        "dimension": "difficulty_level",
+        "value": "medium",
+        "count": 2,
+        "success": 1,
+        "task_success": 1,
+        "task_success_rate": 0.5,
+        "degraded": 1,
+        "failed": 0,
+        "tool_calls": 6,
+        "tool_failures": 0,
+        "step_count": 16,
+        "contract_checks": 2,
+        "contract_success": 1,
+        "contract_success_rate": 0.5,
+        "duration_p50_s": 13.5,
+        "duration_p95_s": 20.9,
+        "tokens_total": 47935,
+        "tokens_p50": 17395
+      },
+      {
+        "dimension": "task_length",
+        "value": "long",
+        "count": 1,
+        "success": 0,
+        "task_success": 0,
+        "task_success_rate": 0.0,
+        "degraded": 1,
+        "failed": 0,
+        "tool_calls": 10,
+        "tool_failures": 0,
+        "step_count": 24,
+        "contract_checks": 1,
+        "contract_success": 0,
+        "contract_success_rate": 0.0,
+        "duration_p50_s": 40.2,
+        "duration_p95_s": 40.2,
+        "tokens_total": 72318,
+        "tokens_p50": 72318
+      },
+      {
+        "dimension": "task_length",
+        "value": "medium",
+        "count": 2,
+        "success": 2,
+        "task_success": 2,
+        "task_success_rate": 1.0,
+        "degraded": 0,
+        "failed": 0,
+        "tool_calls": 5,
+        "tool_failures": 0,
+        "step_count": 14,
+        "contract_checks": 2,
+        "contract_success": 2,
+        "contract_success_rate": 1.0,
+        "duration_p50_s": 11.5,
+        "duration_p95_s": 13.5,
+        "tokens_total": 38607,
+        "tokens_p50": 17395
+      },
+      {
+        "dimension": "task_length",
+        "value": "short",
+        "count": 2,
+        "success": 0,
+        "task_success": 0,
+        "task_success_rate": 0.0,
+        "degraded": 2,
+        "failed": 0,
+        "tool_calls": 6,
+        "tool_failures": 0,
+        "step_count": 16,
+        "contract_checks": 2,
+        "contract_success": 0,
+        "contract_success_rate": 0.0,
+        "duration_p50_s": 9.7,
+        "duration_p95_s": 20.9,
+        "tokens_total": 44840,
+        "tokens_p50": 14300
+      },
+      {
+        "dimension": "generation_mode",
+        "value": "handcrafted_task",
+        "count": 5,
+        "success": 2,
+        "task_success": 2,
+        "task_success_rate": 0.4,
+        "degraded": 3,
+        "failed": 0,
+        "tool_calls": 21,
+        "tool_failures": 0,
+        "step_count": 54,
+        "contract_checks": 5,
+        "contract_success": 2,
+        "contract_success_rate": 0.4,
+        "duration_p50_s": 13.5,
+        "duration_p95_s": 40.2,
+        "tokens_total": 155765,
+        "tokens_p50": 21212
+      }
+    ],
+    "query_count": 5
+  },
+  "baseline_delta": {
+    "because_best": null,
+    "deltas": {},
+    "gate": "block",
+    "warnings": [
+      "recall@5<0.6"
+    ]
+  },
+  "cost": {
+    "prompt_tokens": 154526,
+    "completion_tokens": 1239,
+    "tokens_total": 155765,
+    "cost_usd": 0.1277,
+    "estimated_calls": 31,
+    "model_calls": {
+      "qwen-plus": 28,
+      "default": 5
+    },
+    "per_model": {
+      "qwen-plus": {
+        "prompt": 146666,
+        "completion": 1234,
+        "cost_usd": 0.11980080000000003
+      },
+      "default": {
+        "prompt": 7860,
+        "completion": 5,
+        "cost_usd": 0.00787
+      }
+    },
+    "per_node": {
+      "unknown": {
+        "prompt": 143030,
+        "completion": 1067,
+        "cost_usd": 0.11655800000000001,
+        "calls": 26
+      },
+      "understand": {
+        "prompt": 7860,
+        "completion": 5,
+        "cost_usd": 0.00787,
+        "calls": 5
+      },
+      "verify": {
+        "prompt": 2712,
+        "completion": 78,
+        "cost_usd": 0.0023256,
+        "calls": 1
+      },
+      "plan": {
+        "prompt": 924,
+        "completion": 89,
+        "cost_usd": 0.0009172000000000001,
+        "calls": 1
+      }
+    },
+    "cache": {
+      "calls": 21,
+      "hits": 0,
+      "hit_rate": 0.0
+    }
+  },
+  "query_durations_s": [
+    9.7,
+    11.5,
+    40.2,
+    20.9,
+    13.5
+  ],
+  "notes": [
+    "ordering=agent tool-call sequence"
+  ]
+}

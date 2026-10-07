@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import re
 
+from .observability import timed
 from .state import AgentState
 
 # 近期实验保留条数
@@ -52,7 +53,11 @@ def _parse_tool_result(content) -> tuple[dict | None, str]:
     try:
         from .tool_contract import parse_tool_result
         parsed = parse_tool_result(str(content))
-        if parsed.is_envelope and parsed.ok and isinstance(parsed.data, dict):
+        if (
+            parsed.is_envelope
+            and parsed.outcome == "succeeded"
+            and isinstance(parsed.data, dict)
+        ):
             return parsed.data, ""
     except Exception:
         pass
@@ -68,6 +73,7 @@ _PROJECT_RESULT_TOOLS = ("run_experiment", "set_experiment_project",
 _EXP_result_TOOLS = ("run_experiment", "experiment_status")
 
 
+@timed("context")
 async def context_node(state: AgentState, config=None) -> dict:
     """重建对话级 context。只读 state + 确定性文件读取，纯函数式返回更新。"""
     msgs = state.get("messages", []) or []
@@ -138,4 +144,15 @@ async def context_node(state: AgentState, config=None) -> dict:
         except Exception:
             pass
 
+    try:
+        from .observability import log_event
+
+        log_event(
+            "node_resources",
+            node="context",
+            context=context,
+            message_count=len(msgs),
+        )
+    except Exception:  # noqa: BLE001
+        pass
     return {"context": context}

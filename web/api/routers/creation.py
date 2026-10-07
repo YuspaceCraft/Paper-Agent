@@ -39,11 +39,17 @@ class CreateDocBody(BaseModel):
 
 
 class OutlineBody(BaseModel):
-    outline: list = Field(default_factory=list, description="JSON array of chapters")
+    outline: list = Field(
+        default_factory=list, max_length=200,
+        description="JSON array of chapters",
+    )
 
 
 class SectionBody(BaseModel):
-    content: str = Field(default="", description="Section Markdown body")
+    content: str = Field(
+        default="", max_length=200_000,
+        description="Section Markdown body",
+    )
 
 
 @router.get("/docs")
@@ -51,7 +57,7 @@ async def list_docs(status: str = ""):
     from agent.domains.creation import doc_list
 
     result = json.loads(await doc_list.ainvoke({"status": status}))
-    if not result.get("ok"):
+    if result.get("outcome") != "succeeded":
         raise HTTPException(400, result.get("error", "list failed"))
     return result["data"]
 
@@ -59,7 +65,7 @@ async def list_docs(status: str = ""):
 @router.post("/docs", status_code=201)
 async def create_doc(body: CreateDocBody):
     result = json.loads(await doc_create.ainvoke({"title": body.title}))
-    if not result.get("ok"):
+    if result.get("outcome") != "succeeded":
         raise HTTPException(400, result.get("error", "create failed"))
     return result["data"]
 
@@ -70,7 +76,7 @@ async def set_outline(doc_id: str, body: OutlineBody):
         "doc_id": doc_id,
         "outline": json.dumps(body.outline, ensure_ascii=False),
     }))
-    if not result.get("ok"):
+    if result.get("outcome") != "succeeded":
         raise HTTPException(
             400 if result.get("error_type") == "param_error" else 404,
             result.get("error", "set outline failed"),
@@ -82,7 +88,7 @@ async def set_outline(doc_id: str, body: OutlineBody):
 async def write_section(doc_id: str, section_id: str, body: SectionBody):
     result = json.loads(await doc_write_section.ainvoke({
         "doc_id": doc_id, "section_id": section_id, "content": body.content}))
-    if not result.get("ok"):
+    if result.get("outcome") != "succeeded":
         raise HTTPException(
             400 if result.get("error_type") == "param_error" else 404,
             result.get("error", "write section failed"),
@@ -122,7 +128,7 @@ async def get_doc(doc_id: str):
 @router.get("/docs/{doc_id}/export-docx")
 async def export_docx(doc_id: str):
     result = json.loads(await doc_export_docx.ainvoke({"doc_id": doc_id}))
-    if not result.get("ok"):
+    if result.get("outcome") != "succeeded":
         raise HTTPException(
             404 if result.get("error_type") == "param_error" else 500,
             result.get("error", "export failed"),

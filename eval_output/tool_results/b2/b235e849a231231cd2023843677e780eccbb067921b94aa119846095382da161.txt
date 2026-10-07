@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "1650eb923320fac2c516a4054f241803",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "b8487f5afeb3452294377da2c76bc2f0",
+    "execution_id": "0917753400bc4b09b39da6e27e4e1f0c",
+    "thread_id": "evalqa:eval_5a576970:download_hard_long_batch_three",
+    "tool_name": "search_papers",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 16.00000000325963,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "a2c1d327bd14a1c9280550a0bc5d6860",
+      "sha256": "a2c1d327bd14a1c9280550a0bc5d68608bee5aa87653a60995373d35df555d7b",
+      "bytes": 6448,
+      "chars": 6446,
+      "media_type": "application/json",
+      "tool_name": "search_papers",
+      "execution_id": "0917753400bc4b09b39da6e27e4e1f0c",
+      "thread_id": "evalqa:eval_5a576970:download_hard_long_batch_three",
+      "created_at": "2026-09-20T01:55:30.914077+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\a2\\a2c1d327bd14a1c9280550a0bc5d6860.txt"
+    }
+  ],
+  "data": {
+    "results": [
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0040",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "References",
+        "text": "- [14]  Y. Qiu, Y. Satoh, R. Suzuki, K. Iwata, and H. Kataoka, \"3D-Aware Scene Change  Captioning  From  Multiview  Images,\"  IEEE  Robotics  and Automation Letters, vol. 5, no. 3, pp. 4743-4750, 2020.\n\n- [15]  Y. Qiu et al., \"3D Change Localization and Captioning from Dynamic Scans  of  Indoor  Scenes,\"  in  2023  IEEE/CVF  Winter  Conference  on Applications of Computer Vision (WACV), 2023, pp. 1176-1185.\n\n- [17]  Y. Tu  et al., \"Semantic  Relation-aware  Difference Representation Learning  for  Change  Captioning,\"  in  Findings  of  the  Association  for Computational Linguistics: ACL-IJCNLP 2021, 2021, pp. 63-73.\n\n- [16]  Y. Tu, L. Li, L. Su, J. Du, K. Lu, and Q. Huang, \"Viewpoint-Adaptive Representation Disentanglement Network for Change Captioning,\" IEEE Transactions on Image Proces",
+        "score": 0.07704497220303017
+      },
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0026",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "References",
+        "text": "- [1] H. M. Albarakati et al., 'A novel deep learning architecture for agriculture land cover and land use classification from remote sensing images based on network-level fusion of self-attention architecture,' IEEE J. Sel. Topics Appl. Earth Observ. Remote Sens. , vol. 17, pp. 6338-6353, 2024, doi: 10.1109/JSTARS.2024.3369950.\n\n- [2] J. Nie et al., 'Full-progress crop management and harvesting scheme with integrated space information: A case of jujube orchard,' J. Ind. Inf. Integration , vol. 42, Oct. 2024, Art. no. 100699, doi: 10.1016/j.jii.2024.100699.\n\n- [3] Z. Sun et al., 'Rapid expansion of coastal mangrove forest in guangxi beibu gulf: Patterns, drivers and impacts,' IEEE J. Sel. Topics Appl. Earth Observ. Remote Sens. , vol. 18, pp. 510-522, 2025, doi: 10.1109/JSTARS.2024.3454976",
+        "score": 0.0672493636652619
+      },
+      {
+        "chunk_id": "llm_medqa__chunk_0025",
+        "paper": "llm_medqa",
+        "section": "References",
+        "text": "- [1] A. Dubey, A. Jauhri, A. Pandey, A. Kadian, A. Al-Dahle, A. Letman, A. Mathur, A. Schelten, A. Yang, A. Fan et al. , 'The llama 3 herd of models,' arXiv preprint arXiv:2407.21783 , 2024.\n\n- [2] J. Achiam, S. Adler, S. Agarwal, L. Ahmad, I. Akkaya, F. L. Aleman, D. Almeida, J. Altenschmidt, S. Altman, S. Anadkat et al. , 'Gpt-4 technical report,' arXiv preprint arXiv:2303.08774 , 2023.\n\n- [3] D. Reichenpfader, P. R¨ osslhuemer, and K. Denecke, 'Large language model-based evaluation of medical question answering systems: Algorithm development and case study,' in dHealth 2024 . IOS Press, 2024, pp. 22-27.\n\n- [4] N. Yagnik, J. Jhaveri, V. Sharma, G. Pila, A. Ben, and J. Shang, 'Medlm: Exploring language models for medical question answering systems,' arXiv preprint arXiv:2401.11389 , 2024",
+        "score": 0.058933744715862824
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0041",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "References",
+        "text": "- [29]  S.  Gong, M. Li, J. Feng, Z. Wu, and L. Kong, \"DiffuSeq: Sequence to Sequence  Text  Generation  with  Diffusion  Models,\"  in  International Conference on Learning Representations, ICLR, 2023.\n\n- [28]  X.  Li,  J.  Thickstun,  I.  Gulrajani,  P.  S.  Liang,  and  T.  B.  Hashimoto, \"Diffusion-LM Improves Controllable Text Generation,\" in Advances in Neural Information Processing Systems, 2022, vol. 35, pp. 4328-4343.\n\n- [30]  D. Jiang et al., \"CoMat: Aligning Text-to-Image Diffusion Model with Image-to-Text Concept Matching,\" 2024, arXiv:2404.03653.\n\n- [32]  G. Hoxha, S. Chouaf, F. Melgani, and Y. Smara, \"Change Captioning: A New  Paradigm  for  Multitemporal  Remote  Sensing  Image  Analysis,\" IEEE Transactions on Geoscience and Remote Sensing, vol. 60, pp. 1-14, 2022.\n\n- [31]  J",
+        "score": 0.05827080747587293
+      },
+      {
+        "chunk_id": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing__chunk_0020",
+        "paper": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing",
+        "section": "A. Datasets",
+        "text": "## IV. EXPERIMENTAL\n\n## A. Datasets  \nThe LEVIR MCI dataset [53] is a large-scale benchmark designed for remote sensing image change captioning tasks. It comprises 10,077 pairs of bi-temporal remote sensing images, each with a spatial resolution of 0.5 meters per pixel and a size of 256 × 256 pixels. These image pairs are sourced from 20 distinct regions in Texas, USA, capturing various urban and suburban developments over time. Each image pair is annotated with five descriptive sentences detailing the changes observed between the two time points, resulting in a total of 50,385 change captions. This dataset facilitates the development and evaluation of models that generate natural language descriptions of changes in remote sensing imagery.",
+        "score": 0.056723663936953966
+      }
+    ],
+    "papers": [
+      "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+      "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+      "llm_medqa",
+      "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing"
+    ],
+    "total": 5
+  }
+}

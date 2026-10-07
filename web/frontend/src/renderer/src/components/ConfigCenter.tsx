@@ -1,7 +1,7 @@
 /**
  * ConfigCenter.tsx — 配置中心（居中模态弹窗）。
  *
- * 左侧竖排导航切换五大板块：通用 / 实验 / 工具 / MCP / Skills。
+ * 左侧竖排导航切换配置板块：通用 / 实验 / 工具 / MCP / Skills / 长期记忆 / Prompt 分流。
  * 通用 = 前端本地即时生效；其余 = 后端 GET/PUT（/api/config/*）持久化。
  * 被 ProjectPathPicker 内的 z-index 100 覆盖，故遮罩层用 90、面板用 91。
  */
@@ -14,8 +14,10 @@ import { ExperimentPanel } from './config/ExperimentPanel';
 import { ToolsPanel } from './config/ToolsPanel';
 import { McpPanel } from './config/McpPanel';
 import { SkillsPanel } from './config/SkillsPanel';
+import { MemoryPanel } from './config/MemoryPanel';
+import { PromptsPanel } from './config/PromptsPanel';
 
-export type ConfigTab = 'general' | 'experiment' | 'tools' | 'mcp' | 'skills';
+export type ConfigTab = 'general' | 'experiment' | 'tools' | 'mcp' | 'skills' | 'prompts' | 'memory';
 
 const NAV: Array<{ id: ConfigTab; icon: string; label: string }> = [
   { id: 'general', icon: '⚙', label: '通用配置' },
@@ -23,6 +25,8 @@ const NAV: Array<{ id: ConfigTab; icon: string; label: string }> = [
   { id: 'tools', icon: '🛠', label: '工具配置' },
   { id: 'mcp', icon: '🔌', label: 'MCP 配置' },
   { id: 'skills', icon: '📜', label: 'Skills 配置' },
+  { id: 'memory', icon: '🧠', label: '长期记忆' },
+  { id: 'prompts', icon: '🧬', label: 'Prompt 分流' },
 ];
 
 interface Props {
@@ -81,7 +85,7 @@ export const ConfigCenter: FC<Props> = ({ onClose, settings, onUpdatePaths, agen
           flexShrink: 0,
         }}>
           <span style={{ fontSize: 15, fontWeight: 700 }}>⚙️ 配置中心</span>
-          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>通用（本地即时） · 实验 / 工具 / MCP / Skills（后端持久化）</span>
+          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>通用（本地即时） · 其余板块（后端持久化）</span>
           <div style={{ flex: 1 }} />
           <button
             onClick={onClose}
@@ -137,6 +141,12 @@ export const ConfigCenter: FC<Props> = ({ onClose, settings, onUpdatePaths, agen
             </div>
             <div style={{ display: shown('skills') ? 'block' : 'none' }}>
               {mounted('skills') && <SkillsPanel />}
+            </div>
+            <div style={{ display: shown('memory') ? 'block' : 'none' }}>
+              {mounted('memory') && <MemoryPanel />}
+            </div>
+            <div style={{ display: shown('prompts') ? 'block' : 'none' }}>
+              {mounted('prompts') && <PromptsPanel />}
             </div>
           </div>
         </div>

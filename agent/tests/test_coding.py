@@ -32,7 +32,7 @@ def _wait_exp_idle(exp_id: str, rounds: int = 60) -> dict:
     """轮询直到 exp 进入终态（期间让出 loop 使后台 task/子进程运行）。"""
     for _ in range(rounds):
         stj = json.loads(R(coding.experiment_status.ainvoke({"exp_id": exp_id})))
-        assert stj["ok"] is True, stj
+        assert stj["outcome"] == "succeeded", stj
         if stj["data"]["status"] in ("done", "failed"):
             return stj["data"]
         R(asyncio.sleep(0.2))
@@ -56,7 +56,7 @@ def test_run_experiment_lifecycle(tmp_root: Path):
     )
     payload = json.loads(R(coding.run_experiment.ainvoke(
         {"project": "demo", "command": cmd, "name": "smoke"})))
-    assert payload["ok"] is True, payload
+    assert payload["outcome"] == "succeeded", payload
     exp_id = payload["data"]["exp_id"]
 
     st = _wait_exp_idle(exp_id)
@@ -78,14 +78,14 @@ def test_read_metrics_and_list(tmp_root: Path):
         {"project": "demo", "command": cmd})))["data"]["exp_id"]
     _wait_exp_idle(exp_id)
     raw = json.loads(R(coding.read_metrics.ainvoke({"exp_id": exp_id, "metric_key": "acc"})))
-    assert raw["ok"] and raw["data"]["value"] == 0.7, raw  # CSV 取最后一行
+    assert raw["outcome"] == "succeeded" and raw["data"]["value"] == 0.7, raw
 
     lst = json.loads(R(coding.experiment_list.ainvoke({"project": "demo"})))
     assert any(e["exp_id"] == exp_id for e in lst["data"]["experiments"])
 
     # 不存在的 metric → 结构化错误
     bad = json.loads(R(coding.read_metrics.ainvoke({"exp_id": exp_id, "metric_key": "nope"})))
-    assert bad["ok"] is False and bad["error_type"] == "param_error"
+    assert bad["outcome"] == "failed" and bad["error_type"] == "param_error"
 
 
 def test_delegate_no_backend_structured_error(tmp_root: Path):
@@ -97,7 +97,7 @@ def test_delegate_no_backend_structured_error(tmp_root: Path):
     try:
         raw = json.loads(R(coding.delegate_code_task.ainvoke(
             {"project": "demo", "prompt": "hello"})))
-        assert raw["ok"] is False
+        assert raw["outcome"] == "failed"
         assert "no coding backend" in raw["error"]
     finally:
         if old_cmd is None:
@@ -127,7 +127,7 @@ def test_study_hypothesis_append(tmp_root: Path):
     _setup(tmp_root)
     raw = json.loads(R(coding.study_add_hypothesis.ainvoke(
         {"topic": "demo", "hypothesis": "数据增强应提升鲁棒性"})))
-    assert raw["ok"]
+    assert raw["outcome"] == "succeeded"
     study = coding.load_study("demo")
     assert any(h["text"].startswith("数据增强") for h in study["hypotheses"])
     ctx = json.loads(R(coding.study_context.ainvoke({"topic": "demo"})))
@@ -175,7 +175,7 @@ def test_set_experiment_project_creates_manifest(tmp_root: Path):
     raw = json.loads(R(coding.set_experiment_project.ainvoke(
         {"project": "RMNet-repro", "paper": "RMNet",
          "entry_run": "python train.py"})))
-    assert raw["ok"] is True, raw
+    assert raw["outcome"] == "succeeded", raw
     assert raw["data"]["bound"] is True
     mf = raw["data"]["manifest"]
     assert mf["project"] == "RMNet-repro"
@@ -187,7 +187,10 @@ def test_set_experiment_project_creates_manifest(tmp_root: Path):
     mf2 = json.loads(R(coding.experiment_project_state.ainvoke(
         {"project": "RMNet-repro"})))
 
-    assert mf2["ok"] is True and mf2["data"]["manifest"]["description"] == "repro the paper"
+    assert (
+        mf2["outcome"] == "succeeded"
+        and mf2["data"]["manifest"]["description"] == "repro the paper"
+    )
     assert mf2["data"]["project"] == "RMNet-repro"
     assert isinstance(mf2["data"]["recent_experiments"], list)
     # manifest 文件确实落盘
@@ -202,7 +205,7 @@ def test_run_experiment_updates_manifest(tmp_root: Path):
         {"project": "demo", "command": cmd})))["data"]["exp_id"]
     _wait_exp_idle(exp_id)
     mf = json.loads(R(coding.experiment_project_state.ainvoke({"project": "demo"})))
-    assert mf["ok"] is True
+    assert mf["outcome"] == "succeeded"
     assert mf["data"]["manifest"]["last_run"] == exp_id
     assert mf["data"]["manifest"]["status"] in ("done", "failed")
 
@@ -219,14 +222,14 @@ def test_git_tools_when_available(tmp_root: Path):
     subprocess.run(["git", "-C", str(proj), "config", "user.name", "t"], check=True)
     (proj / "run.py").write_text("print(1)\n", encoding="utf-8")
     r = json.loads(R(coding.git_commit.ainvoke({"project": "demogit", "message": "init"})))
-    assert r["ok"] is True, r
+    assert r["outcome"] == "succeeded", r
     assert r["data"]["sha"]
     (proj / "run.py").write_text("print(2)\n", encoding="utf-8")
     r2 = json.loads(R(coding.git_diff.ainvoke({"project": "demogit"})))
-    assert r2["ok"] is True and "+print(2)" in r2["data"]["output"]
+    assert r2["outcome"] == "succeeded" and "+print(2)" in r2["data"]["output"]
 
     r3 = json.loads(R(coding.git_status.ainvoke({"project": "not_a_repo"})))
-    assert r3["ok"] is False and r3["error_type"] == "param_error"
+    assert r3["outcome"] == "failed" and r3["error_type"] == "param_error"
 
 
 if __name__ == "__main__":

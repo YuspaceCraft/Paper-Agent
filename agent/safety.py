@@ -25,6 +25,35 @@ _PII_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r'(?<!\d)\d{16,19}(?!\d)'), '[银行卡]'),
 ]
 
+_SECRET_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (
+        re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
+        "[密钥]",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(authorization\s*:\s*bearer|bearer)\s+"
+            r"[A-Za-z0-9._~+/=-]{16,}"
+        ),
+        r"\1 [密钥]",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(api[\s_-]?key|secret|token|password)\s*[:=]\s*"
+            r"[\"']?([A-Za-z0-9._~+/=-]{12,})[\"']?"
+        ),
+        r"\1=[密钥]",
+    ),
+    (
+        re.compile(
+            r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----.*?"
+            r"-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
+            re.DOTALL,
+        ),
+        "[私钥]",
+    ),
+]
+
 
 def mask_pii(text: str) -> str:
     """Mask common PII (email/phone/ID/bank card) in a string.
@@ -80,7 +109,11 @@ _OUTPUT_FILTERS = [mask_pii]
 
 
 def sanitize_output(text: str) -> str:
-    """依次应用输出过滤器。当前仅 PII 脱敏；加规则在此追加，不改调用点。"""
+    """依次应用输出过滤器，当前包含 PII 与凭据泄漏脱敏。"""
+    if not text:
+        return text
+    for pat, repl in _SECRET_PATTERNS:
+        text = pat.sub(repl, text)
     for fn in _OUTPUT_FILTERS:
         text = fn(text)
     return text

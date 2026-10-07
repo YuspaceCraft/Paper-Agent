@@ -64,12 +64,19 @@ conda activate demo
 pip install -r requirements.txt
 ```
 
+后续所有 Python、测试和后端命令都应在这个已激活的 `demo` 环境中执行。
+
 ### 2. 启动后端 API
 
 ```bash
-uvicorn web.api.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn web.api.main:app --host 127.0.0.1 --port 8000 --reload
 # Swagger UI → http://localhost:8000/docs
 ```
+
+API 默认只接受 loopback 客户端，并只允许本地前端来源跨域访问。确需远程访问时，
+显式设置 `DEMO_ALLOW_REMOTE_API=1`，同时用 `DEMO_CORS_ORIGINS` 配置可信来源。
+Electron 主进程会为后端生成随机 `DEMO_API_TOKEN`；有副作用的 Agent 工具默认
+必须经过 LangGraph 审批。
 
 ### 3. 启动桌面客户端（Electron）
 

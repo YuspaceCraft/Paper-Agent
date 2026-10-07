@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "5a0e99a22a1e4c1c51cde50856e7b5cd",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "d32ff165e5d24019a6a7042a48b9d8cd",
+    "execution_id": "24fb38d69998480ba73658352862c5f8",
+    "thread_id": "evalqa:eval_5a576970:rag_hard_long_three_paper_synthesis",
+    "tool_name": "search_papers",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 14.999999955762178,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "f8ab4f399a2b3c7184bdfb50a8e6d6ef",
+      "sha256": "f8ab4f399a2b3c7184bdfb50a8e6d6ef67d2a82959dbc9539e4bf8ebb5a515bc",
+      "bytes": 4995,
+      "chars": 4995,
+      "media_type": "application/json",
+      "tool_name": "search_papers",
+      "execution_id": "24fb38d69998480ba73658352862c5f8",
+      "thread_id": "evalqa:eval_5a576970:rag_hard_long_three_paper_synthesis",
+      "created_at": "2026-09-20T01:44:06.084832+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\f8\\f8ab4f399a2b3c7184bdfb50a8e6d6ef.txt"
+    }
+  ],
+  "data": {
+    "results": [
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0020",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "D. Comparisons",
+        "text": "Fig. 8. Visualization of captioning comparing with others on the LEVIR-CC.  \n[FIGURE_DESC: Visualizes qualitative change captioning results on bitemporal remote sensing images by contrasting ground truth descriptions with outputs from RSICFormer, ICT-Net, and",
+        "score": 0.3550058048756639
+      },
+      {
+        "chunk_id": "2022_chenyang_liu_remote_dataset__chunk_0000",
+        "paper": "2022_chenyang_liu_remote_dataset",
+        "section": "Remote Sensing Image Change Captioning With Dual-Branch Transformers: A New Method and a Large Scale Dataset",
+        "text": "## Remote Sensing Image Change Captioning With Dual-Branch Transformers: A New Method and a Large Scale Dataset  \nChenyang Liu , Rui Zhao , Hao Chen , Graduate Student Member, IEEE Zhengxia Zou , and Zhenwei Shi , Member, IEEE  \n<!-- image -->  \nAbstract -Analyzing land cover changes with multitemporal remote sensing (RS) images is crucial for environmental protection and land planning. In this article, we explore RS image change captioning (RSICC), a new task aiming at generating human-like language descriptions for the land cover changes in multitemporal RS images. We propose a novel Transformer-based RSICC (RSICCformer) model. It consists of three main components: 1) a CNN-based feature extractor to gener",
+        "score": 0.32296908048394657
+      },
+      {
+        "chunk_id": "CCExpert__chunk_0000",
+        "paper": "CCExpert",
+        "section": "",
+        "text": "er  \nent  \nion  \ner  \nata Change Aware Transformer Layer Diff Expert  \n1",
+        "score": 0.32053009190474274
+      },
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0017",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "D. Comparisons",
+        "text": "the model, and their combined effect leads to significant improvements across all evaluated metrics. The ablation study not only highlights the importance of each individual module but also underscores the potential for further performance gains through the strategic combination of these modules.\n\n## D. Comparisons  \nA comparative analysis is conducted between the proposed method and several state-of-the-art (SOTA) approaches, including DUDA [30], MCCFormers [31], RSICCformer [16], Chg2Cap [20], SEN [32], ICT-Net [33], MAF-Net [34], and RSCaMa [35].  \n1) Comparisons on the LEVIR-CC Dataset: A comprehensive evaluation of the CTM's performance on the LEVIR-CC dataset was conducted. As shown in Table IV, CTM demonstrates exceptional performa",
+        "score": 0.2868855969514152
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0030",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "C. Quantitative Results",
+        "text": "captions and predictions from baselines versus the proposed RSCC-Diffusion model. Demonstrates RSCC-Diffusion generates captions more accurately reflecting semantic changes like construction, supporting superior performance in capturing pixel-level differences and generating fluent descriptions.]\n\n## C. Quantitative Results  \nWe  compare  the  proposed  method  Diffuison-RSCC  with previous  state-of-the-art  methods  on  the  LEVIR-CC  dataset, including DUDA [13], MCCFormers-S [57], MCCFormers-D [57],  RSICCformer  [6]  and  VARD  [16].  These  methods  are constructed on the encoder-decoder framework, in which the encoder  extracts  high-level  image  features  and  the  decoder utilizes the LSTM-based or Transformer-based blocks to g",
+        "score": 0.28563582731821385
+      }
+    ],
+    "papers": [
+      "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+      "2022_chenyang_liu_remote_dataset",
+      "CCExpert",
+      "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote"
+    ],
+    "total": 5
+  }
+}

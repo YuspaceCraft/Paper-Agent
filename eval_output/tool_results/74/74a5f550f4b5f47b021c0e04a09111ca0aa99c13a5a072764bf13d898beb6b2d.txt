@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "7b4d9ad5f2b5e1d06e7e01c3a413512b",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "b8487f5afeb3452294377da2c76bc2f0",
+    "execution_id": "0917753400bc4b09b39da6e27e4e1f0c",
+    "thread_id": "evalqa:eval_5a576970:download_hard_long_batch_three",
+    "tool_name": "search_papers",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 31.000000017229468,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "34fa4f5611be9ebc405443444d014c1f",
+      "sha256": "34fa4f5611be9ebc405443444d014c1f3788893b9ac53d8d7c0faff6b4eed2b1",
+      "bytes": 6485,
+      "chars": 6485,
+      "media_type": "application/json",
+      "tool_name": "search_papers",
+      "execution_id": "0917753400bc4b09b39da6e27e4e1f0c",
+      "thread_id": "evalqa:eval_5a576970:download_hard_long_batch_three",
+      "created_at": "2026-09-20T01:55:30.871001+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\34\\34fa4f5611be9ebc405443444d014c1f.txt"
+    }
+  ],
+  "data": {
+    "results": [
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0028",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "References",
+        "text": "- [23] L. Yao, W. Wang, and Q. Jin, 'Image difference captioning with pretraining and contrastive learning,' Proc. AAAI Conf. Artif. Intell. , vol. 36, no. 3, pp. 3108-3116, Jun. 2022, doi: 10.1609/aaai.v36i3.20218.\n\n- [24] C. Liu, K. Chen, H. Zhang, Z. Qi, Z. Zou, and Z. Shi, 'Change-agent: Towards interactive comprehensive remote sensing change interpretation and analysis,' IEEE Trans. Geosci. Remote Sens. , vol. 62, 2024, Art. no. 5635616, doi: 10.1109/TGRS.2024.3425815.\n\n- [25] J. Shi, M. Zhang, Y. Hou, R. Zhi, and J. Liu, 'A multi-task network and two large scale datasets for change detection and captioning in remote sensing images,' IEEE Trans. Geosci. Remote Sens. , vol. 62, 2024, Art. no. 2007017, doi: 10.1109/TGRS.2024.3485740.\n\n- [26] K. Papineni, S. Roukos, T. Ward, and W. J. Zh",
+        "score": 0.10149503493523779
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0043",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "References",
+        "text": "- [53]  J.  Tian,  J.  Lei,  J.  Zhang,  W.  Xie,  and  Y.  Li,  \"SwiMDiff:  Scene-Wide Matching Contrastive  Learning  With  Diffusion  Constraint  for  Remote Sensing Image,\" IEEE Transactions on Geoscience and Remote Sensing, vol. 62, pp. 1-13, 2024.\n\n- [55]  H.  Kim,  J.  Kim,  H.  Lee,  H.  Park,  and  G.  Kim,  \"Viewpoint-Agnostic Change  Captioning with Cycle Consistency,\"  in  2021  IEEE/CVF International Conference on Computer Vision (ICCV), 2021, pp. 2075-2084.\n\n- [54]  X. Shi, X. Yang, J. Gu, S. Joty, and J. Cai, \"Finding It at Another Side: A Viewpoint-Adapted  Matching  Encoder  for  Change  Captioning,\"  in Computer Vision - ECCV 2020, 2020, pp. 574-590.\n\n- [56]  Y.  Tu,  L.  Li,  C.  Yan,  S.  Gao,  and  Z.  Yu,  \"R 3 Net:Relation-embedded Representation  Reconstruction  Net",
+        "score": 0.09259559243314196
+      },
+      {
+        "chunk_id": "2022_chenyang_liu_remote_dataset__chunk_0011",
+        "paper": "2022_chenyang_liu_remote_dataset",
+        "section": "B. Remote Sensing Image Captioning",
+        "text": "Cucchiara, 'From show to tell: A survey on deep learning-based image captioning,' IEEE Trans. Pattern Anal. Mach. Intell. , early access, Feb. 7, 2022, doi: 10.1109/TPAMI.2022.3148210.\n- [86] X. Chen et al., 'Microsoft COCO captions: Data collection and evaluation server,' 2015, arXiv:1504.00325 .\n\n- [85] M. Stefanini, M. Cornia, L. Baraldi, S. Cascianelli, G. Fiameni, and R. Cucchiara, 'From show to tell: A survey on deep learning-based image captioning,' IEEE Trans. Pattern Anal. Mach. Intell. , early access, Feb. 7, 2022, doi: 10.1109/TPAMI.2022.3148210.\n- [86] X. Chen et al., 'Microsoft COCO captions: Data collection and evaluation server,' 2015, arXiv:1504.00325 .\n- [87] K. Papineni",
+        "score": 0.08305780014037753
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0040",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "References",
+        "text": "- [14]  Y. Qiu, Y. Satoh, R. Suzuki, K. Iwata, and H. Kataoka, \"3D-Aware Scene Change  Captioning  From  Multiview  Images,\"  IEEE  Robotics  and Automation Letters, vol. 5, no. 3, pp. 4743-4750, 2020.\n\n- [15]  Y. Qiu et al., \"3D Change Localization and Captioning from Dynamic Scans  of  Indoor  Scenes,\"  in  2023  IEEE/CVF  Winter  Conference  on Applications of Computer Vision (WACV), 2023, pp. 1176-1185.\n\n- [17]  Y. Tu  et al., \"Semantic  Relation-aware  Difference Representation Learning  for  Change  Captioning,\"  in  Findings  of  the  Association  for Computational Linguistics: ACL-IJCNLP 2021, 2021, pp. 63-73.\n\n- [16]  Y. Tu, L. Li, L. Su, J. Du, K. Lu, and Q. Huang, \"Viewpoint-Adaptive Representation Disentanglement Network for Change Captioning,\" IEEE Transactions on Image Proces",
+        "score": 0.08231986380649285
+      },
+      {
+        "chunk_id": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing__chunk_0034",
+        "paper": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing",
+        "section": "References",
+        "text": "- [43] X. Yu, Y. Li, J. Ma, C. Li, and H. Wu, 'Diffusion-rscc: Diffusion probabilistic model for change captioning in remote sensing images,' IEEE Trans. Geosci. Remote Sens. , 2025.\n\n- [44] Q. Zhou, J. Gao, Y. Yuan, and Q. Wang, 'Single-stream extractor network with contrastive pre-training for remote-sensing change captioning,' IEEE Trans. Geosci. Remote Sens. , vol. 62, pp. 1-14, 2024.\n\n- [45] L. Qiu, X. Zhang, C. Gu, and S. Zhu, 'A dual attentive generative adversarial network for remote sensing image change detection,' arXiv preprint arXiv:2310.01876 , 2023.\n\n- [46] J.-J. Wang, N. Dobigeon, M. Chabert, D.-C. Wang, T.-Z. Huang, and J. Huang, 'Cd-gan: A robust fusion-based generative adversarial network for unsupervised remote sensing change detection with heterogeneous sensors,' arXiv",
+        "score": 0.07973721620321399
+      }
+    ],
+    "papers": [
+      "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+      "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+      "2022_chenyang_liu_remote_dataset",
+      "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing"
+    ],
+    "total": 5
+  }
+}

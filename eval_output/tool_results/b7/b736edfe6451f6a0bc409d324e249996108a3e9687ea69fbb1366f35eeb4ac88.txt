@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "dfe0e29b45bf5ef35ff1816cbbabbf69",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "376eec7a97ae499886a22988c7baa199",
+    "execution_id": "8f3264f6299e437eb001ac3dd432e210",
+    "thread_id": "evalqa:eval_24fa667d:qa_5610c0be",
+    "tool_name": "search_papers",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 31.000000017229468,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "6896219597695523ca6a21869c957dc5",
+      "sha256": "6896219597695523ca6a21869c957dc5b884090936b3e6a94f87eeeacc793bbe",
+      "bytes": 5409,
+      "chars": 5403,
+      "media_type": "application/json",
+      "tool_name": "search_papers",
+      "execution_id": "8f3264f6299e437eb001ac3dd432e210",
+      "thread_id": "evalqa:eval_24fa667d:qa_5610c0be",
+      "created_at": "2026-09-19T14:01:30.504745+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\68\\6896219597695523ca6a21869c957dc5.txt"
+    }
+  ],
+  "data": {
+    "results": [
+      {
+        "chunk_id": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining__chunk_0014",
+        "paper": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining",
+        "section": "3.3.1. Motion-Level Change Localization",
+        "text": "## 3.3. SAM-Guided Change Region Mining  \nSAM-Guided Change Region Mining leverages SAM [17] to localize pixel-accurate, motion-level change regions and to aggregate semantic-level change features into categoryaware region representations from the bi-temporal pair.\n\n## 3.3.1. Motion-Level Change Localization  \nGiven each image X i ( i ∈ { 1 , 2 } ) , SAM first generates a set of instance masks M i = { m i,n } N i n =1 and exposes an intermediate dense feature map S i ∈ R h × w × C s from its frozen image encoder. To select reliable and complete region proposals, we filter candidate masks based on confidence scores, region area, non-maximum suppression, and a minimum-area threshold.  \nEach mask is converted into a bounding box r i,n , a",
+        "score": 0.5563618227365795
+      },
+      {
+        "chunk_id": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining__chunk_0013",
+        "paper": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining",
+        "section": "3.3. SAM-Guided Change Region Mining",
+        "text": "to yield  \nGenerates spatial image embeddings E_img of dimensions h by w by C_e by applying a parameterized neural network function phi_theta to fused feature tensor G.  \nThe resulting global embedding E img and priors { C map , M map } are forwarded to subsequent modules for downstream reasoning.\n\n## 3.3. SAM-Guided Change Region Mining  \nSAM-Guided Change Region Mining leverages SAM [17] to localize pixel-accurate, motion-level change regions and to aggregate semantic-level change features into categoryaware region representations from the bi-temporal pair.",
+        "score": 0.5082753864955672
+      },
+      {
+        "chunk_id": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining__chunk_0010",
+        "paper": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining",
+        "section": "3.1. Overview",
+        "text": "## 3. Methodology\n\n## 3.1. Overview  \nAs illustrated in Fig. 2, we propose Segment-Assisted Graph-Enhanced Change Captioner (SAGE-CC), a framework for remote sensing change captioning from bitemporal image pairs acquired at two epochs. Specifically, the Bi-Temporal Scene Consistency Encoder (Sec. 3.2) extracts shared multi-scale features and distills explicit crosstime consistency priors, offering robust global context to support subsequent modules. The SAM-Guided Change Region Mining (Sec. 3.3) leverages SAM to jointly perform motion-level change localization of pixel-accurate changed regions and prompt-guided aggregation of semantics into category-aware region representations. Moreover, the Remote-Sensing Change Graph Reasoner (Sec. 3.4) con",
+        "score": 0.39467166357093086
+      },
+      {
+        "chunk_id": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing__chunk_0009",
+        "paper": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing",
+        "section": "",
+        "text": "Figure description: This framework generates precise difference images for change detection by extracting multi-scale features from bi-temporal inputs via a shared encoder. Features are concatenated and processed by a difference module to compute initial change maps.",
+        "score": 0.3835682804701428
+      },
+      {
+        "chunk_id": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining__chunk_0015",
+        "paper": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining",
+        "section": "3.3.2. Semantic-Level Change Aggregation",
+        "text": "are embedded via positional encoding and concatenated with their respective region descriptors. The final motion-level change representation is obtained by concatenating these enriched features within each image, capturing structural changes at pixel-level precision without assuming object motion.\n\n## 3.3.2. Semantic-Level Change Aggregation  \nTo overcome the limitations of purely visual or manually defined prompts, we introduce Grounding DINO [20] as a semantic prior to automatically generate promptconditioned bounding boxes for both images X 1 and X 2 . These boxes correspond to high-level semantic categories such as building , road , and vegetation . Subsequently, SAM refines these bounding boxes into detailed segmentation",
+        "score": 0.38234275149631874
+      }
+    ],
+    "papers": [
+      "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining",
+      "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing"
+    ],
+    "total": 5
+  }
+}

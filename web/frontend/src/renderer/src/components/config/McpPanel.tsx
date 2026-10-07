@@ -170,8 +170,8 @@ export const McpPanel: FC = () => {
                 {s.disabled && <span style={{ fontSize: 11, color: 'var(--color-danger)' }}>已停用</span>}
                 <div style={{ flex: 1 }} />
                 {t && (
-                  <span style={{ fontSize: 11, color: t.ok ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                    {t.ok ? `✓ ${t.tool_count} 工具` : `✗ ${t.error}`}
+                  <span style={{ fontSize: 11, color: t.outcome === 'succeeded' ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                    {t.outcome === 'succeeded' ? `✓ ${t.tool_count} 工具` : `✗ ${t.error}`}
                   </span>
                 )}
                 <button style={btnBase} disabled={testing === s.name} onClick={e => void test(s.name, e)}>

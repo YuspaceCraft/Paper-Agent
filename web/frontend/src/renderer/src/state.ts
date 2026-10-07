@@ -30,14 +30,15 @@ export interface ToolStep {
   name: string;
   args?: Record<string, unknown>;
   result?: string;
-  status: 'running' | 'success' | 'error';
+  status: 'running' | 'success' | 'error' | 'partial' | 'skipped' | 'interrupted';
   executionTime?: number;
   /** Set on leaf tools called inside a subagent — the parent step's id. */
   parentId?: string;
   /** Nested leaf tools of a subagent step. */
   children?: ToolStep[];
-  /** 'subagent' = a parent step (arxiv/ingest); undefined = leaf tool. */
-  kind?: 'subagent' | 'tool';
+  /** 'subagent' = a parent step (arxiv/ingest); undefined = leaf tool.
+      EvalPanel 评测链路额外用 llm/intent/plan/answer 渲染 trace 事件卡。 */
+  kind?: 'subagent' | 'tool' | 'llm' | 'intent' | 'plan' | 'answer';
 }
 
 /** One step of a plan (plan-and-execute mode), emitted by the plan node.
@@ -60,6 +61,51 @@ export interface WorkNote {
   status: string;
 }
 
+export interface FinalConfidenceData {
+  score: number;
+  level: 'high' | 'medium' | 'low' | string;
+  reasons: string[];
+  uncertainty_note?: string;
+}
+
+export interface CompletionReportData {
+  status: 'completed' | 'partial' | 'interrupted' | 'failed' | string;
+  done: number;
+  total: number;
+  outstanding: PlanOutstanding[];
+  can_resume: boolean;
+  next_actions: string[];
+  plan_cost_exceeded: boolean;
+  confidence: FinalConfidenceData;
+}
+
+export interface ApprovalRequest {
+  kind: 'tool_approval';
+  tool: string;
+  tool_version?: string;
+  side_effect?: boolean;
+  permissions?: string[];
+  args?: {
+    arg_keys?: string[];
+    args_sha256?: string;
+    args_bytes?: number;
+    arg_preview?: Record<string, unknown> | unknown;
+  };
+  calls?: Array<{
+    tool: string;
+    tool_version?: string;
+    args?: {
+      arg_keys?: string[];
+      args_sha256?: string;
+      args_bytes?: number;
+      arg_preview?: Record<string, unknown> | unknown;
+    };
+    idempotency_key?: string;
+  }>;
+  idempotency_key?: string;
+  reason?: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'system';
@@ -70,10 +116,14 @@ export interface Message {
   planProgress?: { done: number; total: number } | null;
   /** verify_node 的报告式验证结论（plan 模式收尾）。 */
   verify?: PlanVerdictData | null;
+  taskStatus?: CompletionReportData | null;
+  finalConfidence?: FinalConfidenceData | null;
   /** 本回合实际执行模式（mode SSE 事件）。 */
   mode?: 'react' | 'plan';
   /** 对话中心化：写作/实验内联状态片上（按时间累积）。 */
   workNotes?: WorkNote[];
+  /** Graph interrupt: side-effecting tool waiting for user approval. */
+  approval?: ApprovalRequest | null;
   status: 'complete' | 'streaming' | 'aborted';
   timestamp: string;
 }
@@ -111,6 +161,9 @@ export interface BackgroundTask {
   /** 0-100 可选；后端暂不下发 → 恒 null，UI 用 indeterminate 动画条 */
   percent: number | null;
   error: string | null;
+  errorCode?: string;
+  retryable?: boolean;
+  outcome?: string;
   result: Record<string, unknown> | null;
   notify: boolean;
   /** ingest 任务阶段: 'parse' 解析中 | 'index' 向量化入库中 | '' 其他 */
@@ -150,6 +203,7 @@ export type Action =
   | { type: 'UPDATE_THREAD_TITLE'; threadId: string; title: string }
   | { type: 'ADD_MESSAGE'; message: Message }
   | { type: 'APPEND_TOKEN'; messageId: string; token: string }
+  | { type: 'REPLACE_MESSAGE_CONTENT'; messageId: string; content: string }
   | { type: 'FINISH_MESSAGE'; messageId: string }
   | { type: 'ADD_TOOL_STEP'; messageId: string; step: ToolStep }
   | { type: 'UPDATE_TOOL_STEP'; messageId: string; toolCallId: string; patch: Partial<ToolStep> }
@@ -157,11 +211,13 @@ export type Action =
   | { type: 'UPDATE_PLAN_STEP'; messageId: string; stepId: string; patch: Partial<PlanStep> }
   | { type: 'SET_PLAN_PROGRESS'; messageId: string; done: number; total: number }
   | { type: 'SET_PLAN_VERIFY'; messageId: string; verdict: PlanVerdictData }
+  | { type: 'SET_TASK_STATUS'; messageId: string; taskStatus: CompletionReportData }
   | { type: 'SET_MODE'; messageId: string; mode: 'react' | 'plan' }
   | { type: 'SET_THREAD_MODE'; threadId: string; mode: AgentMode }
   | { type: 'SET_THREAD_DOC'; threadId: string; docId: string }
   | { type: 'SET_THREAD_PROJECT'; threadId: string; project: string }
   | { type: 'ADD_WORK_NOTE'; messageId: string; note: WorkNote }
+  | { type: 'SET_APPROVAL'; messageId: string; approval: ApprovalRequest | null }
   | { type: 'ABORT_MESSAGE'; messageId: string }
   | { type: 'SET_STREAMING'; isStreaming: boolean }
   | { type: 'SET_RIGHT_PANEL_WIDTH'; width: number }
@@ -389,6 +445,16 @@ export function appReducer(state: AppState, action: Action): AppState {
         ),
       };
 
+    case 'REPLACE_MESSAGE_CONTENT':
+      return {
+        ...state,
+        messages: state.messages.map(m =>
+          m.id === action.messageId
+            ? { ...m, content: action.content }
+            : m
+        ),
+      };
+
     case 'FINISH_MESSAGE':
       return {
         ...state,
@@ -506,6 +572,30 @@ export function appReducer(state: AppState, action: Action): AppState {
         messages: state.messages.map(m =>
           m.id === action.messageId
             ? { ...m, workNotes: [...(m.workNotes ?? []), action.note] }
+            : m
+        ),
+      };
+
+    case 'SET_TASK_STATUS':
+      return {
+        ...state,
+        messages: state.messages.map(m =>
+          m.id === action.messageId
+            ? {
+                ...m,
+                taskStatus: action.taskStatus,
+                finalConfidence: action.taskStatus.confidence,
+              }
+            : m
+        ),
+      };
+
+    case 'SET_APPROVAL':
+      return {
+        ...state,
+        messages: state.messages.map(m =>
+          m.id === action.messageId
+            ? { ...m, approval: action.approval }
             : m
         ),
       };

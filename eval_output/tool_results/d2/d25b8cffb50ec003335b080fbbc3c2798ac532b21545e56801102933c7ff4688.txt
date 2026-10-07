@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "e4bb3f1492365f0a089e76f1d1a6d979",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "8397aabc063142e1b398a21320317257",
+    "execution_id": "cb1eecff1af344babc641f1e52ce3ee9",
+    "thread_id": "evalqa:eval_5a576970:read_easy_long_medqa_fields",
+    "tool_name": "fetch_content",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 16.00000000325963,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "e6139b9ffa7cf7e38dc29f94c98d7a48",
+      "sha256": "e6139b9ffa7cf7e38dc29f94c98d7a480269685ac0f9adc9aa84b55d9c3a1cae",
+      "bytes": 6013,
+      "chars": 6013,
+      "media_type": "application/json",
+      "tool_name": "fetch_content",
+      "execution_id": "cb1eecff1af344babc641f1e52ce3ee9",
+      "thread_id": "evalqa:eval_5a576970:read_easy_long_medqa_fields",
+      "created_at": "2026-09-20T01:57:18.942075+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\e6\\e6139b9ffa7cf7e38dc29f94c98d7a48.txt"
+    }
+  ],
+  "data": "## I. INTRODUCTION  (llm_medqa)\n3 chunk(s)\n\ninterpretability and reliability in addressing complex medical queries. This research not only offers a robust solution for medical question answering but also establishes a foundation for broader applications of LLMs in the medical domain.  \nIndex Terms -MedQA, LLMs, Llama, Zero-Shot Learning.\n\n## I. INTRODUCTION  \nThe advent of Large Language Models (LLMs) [1], [2] has revolutionized the field of natural language processing, offering unprecedented capabilities in understanding and generating human-like text across a multitude of domains. However, the medical domain poses unique challenges due to its specialized terminology, complex reasoning requirements, and the critical importance of accuracy in patient care. Medical Question Answering (QA) systems [3], [4] which are designed to provide accurate and reliable information in response to medical queries, must navigate this complexity while ensuring the safety and efficacy of the information delivered. Despite significant advancements, existing LLMs often struggle with the nuances of medical language and the need for precise reasoning, which is essential for high-quality medical QA.  \nIn this study, we introduce a multi-agent framework, as shown in Fig. 1, to tackle the QA task on the medical domain. This framework leverages the Llama3.1:70B model, the offthe-shelf LLM model with 70 billion parameters, to enhance the performance of medical QA systems on the MedQA dataset [5]. Our multi-agent approach incorporates specialized agents to handle the inherent complexity of medical QA [6]. Each query in the system is assigned a series of experts, including question-specific analysis, option analysis, and case generation. A key innovation of our multi-agent system is the integration of a case generation module. This module autonomously generates supportive clinical cases tailored to the given question and selected options. Its purpose is to produce plausible and contextually accurate cases that substantiate the correct option for a specific medical problem. These cases, which are integrated into the reporting module, address a critical gap in existing systems by providing transparent and contextually rich explanations.  \nFurthermore, the system leverages the Llama3.1:70B model's vast capacity for zero-shot learning, enabling it to reason through complex and specialized medical queries without requiring additional training examples. This capability is especially valuable for the MedQA dataset, where annotated data is scarce and costly to generate, allowing the system to adapt to diverse scenarios with minimal data preparation.  \nOur primary research objective is to demonstrate the effectiveness of the Llama3.1:70B model, combined with a multi-agent framework [7], [8], in addressing the challenges of medical QA. Specifically, we aim to illustrate how the architectural advantages of both the model and the multiagent system contribute to improved accurac\n\n(Normal: 7.35-7.45), pCO2: 70 mmHg (Normal: 35-45 mmHg), HCO3 33 (Normal: 21-26 mEqL) Which of the following is most likely to have produced this patient condition? Options: A) Panic attack. B) Mechanical ventilation. C) Diabetic ketoacidosis. D)Pulmonary embolus. E)Chronic obstructive bronchitis.\n\nFig. 1. Illustration of our proposed multi-agent architecture diagram, given a medical problem as an input to the larger model, which is divided into six phases: (1) Agent Generation, (2) Case Generation, (3) Proposition Analysis, (4) Report Digest, (5) Voting Mechanism, and (6) Decision Making.  \ncontext of a multi-agent medical QA system. The case generation module autonomously generates supportive clinical cases based on the problem and selected options. This approach enhances system interpretability by offering contextually rich and human-readable justifications.  \n- We present a detailed process for generating supportive clinical cases, which involves extracting key clinical features, such as symptoms and diagnostic findings, from the problem and selected options. Each case consists of three components: Context, Key Mechanism/Reasoning, and Neutrality Check. This ensures that the generated cases are realistic, neutral, and aligned with the correct option, thus supporting the final diagnosis and enhancing interpretability.\n- We conduct experiments on the MedQA dataset to evaluate the performance of our multi-agent system. The results show that integrating the case generation module significantly improves the system's accuracy and interpretability, offering more contextually rich explanations for medical problems.  \nThe remainder of this paper is organized as follows: Section II reviews the related work in the field of medical QA and LLMs for medical problem solving and multi-agent systems. Section III describes our methodology, including the model architecture, multi-agent framework. Section IV presents our experimental process and results. Finally, Section V concludes the paper and suggests directions for future research.\n\nFigure description: This multi-agent framework enhances medical QA reliability. It orchestrates LLM-generated expert agents through a sequential pipeline where diverse analyses of generated cases and propositions are digested and aggregated via a consensus voting mechanism."
+}

@@ -50,13 +50,13 @@ _MAX_FETCH_BYTES = 40_000
 # 保证「不是合法 envelope」的 UTF-8 文本，parse_tool_result 据此分流。
 
 def _err(error_type: str, detail: str, next_action: str) -> str:
-    from agent.tool_contract import err as _err_contract
-    return _err_contract(error_type, detail, next_action)
+    from agent.tool_contract import failure
+    return failure(error_type, detail, next_action)
 
 
 def _ok(data: dict) -> str:
-    from agent.tool_contract import ok as _ok_contract
-    return _ok_contract(data)
+    from agent.tool_contract import success
+    return success(data)
 
 
 # ---- 共享辅助 ----
@@ -95,17 +95,30 @@ def _truncate(text: str, max_bytes: int = _MAX_READ_BYTES) -> str:
 
 def _is_private_host(hostname: str) -> bool:
     """SSRF 守卫：拒绝内网/回环/保留地址。解析不了的保守拒绝。"""
+    def _blocked(ip) -> bool:
+        return (
+            ip.is_private or ip.is_loopback or ip.is_link_local
+            or ip.is_reserved or ip.is_multicast or ip.is_unspecified
+        )
+
     try:
-        ip = ipaddress.ip_address(hostname)
+        return _blocked(ipaddress.ip_address(hostname))
     except ValueError:
-        try:
-            ip = ipaddress.ip_address(socket.gethostbyname(hostname))
-        except OSError:
+        pass
+    try:
+        infos = socket.getaddrinfo(
+            hostname, None, type=socket.SOCK_STREAM,
+        )
+        addresses = {
+            ipaddress.ip_address(info[4][0])
+            for info in infos
+            if info and len(info) > 4 and info[4]
+        }
+        if not addresses:
             return True
-    return (
-        ip.is_private or ip.is_loopback or ip.is_link_local
-        or ip.is_reserved or ip.is_multicast or ip.is_unspecified
-    )
+        return any(_blocked(ip) for ip in addresses)
+    except (OSError, ValueError):
+        return True
 
 
 # ---- 工具实现 ----
@@ -118,12 +131,23 @@ async def _read_file(path: str) -> str:
     if not p.is_file():
         return _err("param_error", f"not a file: {path}", "Use list_dir to see contents.")
     try:
-        content = p.read_text(encoding="utf-8", errors="replace")
+        with p.open("rb") as handle:
+            raw = handle.read(_MAX_READ_BYTES + 1)
+        truncated = len(raw) > _MAX_READ_BYTES
+        content = raw[:_MAX_READ_BYTES].decode("utf-8", errors="replace")
     except OSError as e:
         return _err("param_error", f"read failed: {e}", "Check the path.")
     if not content:
         return "[File exists but is empty]"
-    return _truncate(content)
+    if truncated:
+        try:
+            total = p.stat().st_size
+        except OSError:
+            total = len(raw)
+        content += (
+            f"\n...[truncated — {_MAX_READ_BYTES} of {total} bytes shown]"
+        )
+    return content
 
 
 async def _list_dir(path: str = ".", limit: int = 500) -> str:
@@ -163,13 +187,23 @@ def _eval_ast(node: ast.AST):
     if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
         return node.value
     if isinstance(node, ast.BinOp) and type(node.op) in _BINOPS:
-        return _BINOPS[type(node.op)](_eval_ast(node.left), _eval_ast(node.right))
+        left = _eval_ast(node.left)
+        right = _eval_ast(node.right)
+        if isinstance(node.op, ast.Pow) and abs(right) > 1000:
+            raise ValueError("exponent is too large")
+        result = _BINOPS[type(node.op)](left, right)
+        if isinstance(result, int) and result.bit_length() > 100_000:
+            raise ValueError("result is too large")
+        return result
     if isinstance(node, ast.UnaryOp) and type(node.op) in _UNARY:
         return _UNARY[type(node.op)](_eval_ast(node.operand))
     raise ValueError("disallowed expression")
 
 
 async def _calculator(expr: str) -> str:
+    if len(expr or "") > 200:
+        return _err("param_error", "expression is too long",
+                    "Use at most 200 characters.")
     try:
         result = _eval_ast(ast.parse(expr, mode="eval"))
     except (SyntaxError, ValueError, ZeroDivisionError, OverflowError) as e:
@@ -193,27 +227,106 @@ async def _write_file(path: str, content: str) -> str:
     return _ok({"path": str(p), "bytes_written": len(content.encode("utf-8"))})
 
 
-async def _fetch_url(url: str) -> str:
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        return _err("param_error", f"unsupported scheme: {parsed.scheme}",
-                    "Use http:// or https://.")
-    if not parsed.hostname:
-        return _err("param_error", "missing host in URL", "Provide a full URL.")
-    if _is_private_host(parsed.hostname):
-        return _err("param_error", f"blocked host (internal/private): {parsed.hostname}",
-                    "Only public hosts are reachable.")
+async def _artifact_read(
+    artifact_id: str, offset: int = 0, max_chars: int = 5000,
+) -> str:
+    """Read one page from a content-addressed oversized result."""
+    from agent.core.artifact_store import metadata, read_page
+
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as c:
-            r = await c.get(url, headers={"User-Agent": "Mozilla/5.0"})
-            r.raise_for_status()
+        page_chars = max(1, min(int(max_chars), 5000))
+    except (TypeError, ValueError):
+        page_chars = 5000
+    page = read_page(
+        artifact_id, offset=offset, max_chars=page_chars,
+    )
+    if page is None:
+        return _err(
+            "not_found",
+            f"artifact not found: {artifact_id}",
+            "Use the artifact_id returned by the original tool call.",
+        )
+    info = metadata(artifact_id) or {}
+    header = (
+        f"## Artifact {artifact_id}\n"
+        f"{page['offset']}:{page['end']} of {page['total_chars']} chars"
+    )
+    body = f"{header}\n\n{page['text']}"
+    if page.get("next_offset") is not None:
+        body += (
+            f"\n\n[continue with artifact_read(artifact_id="
+            f"\"{artifact_id}\", offset={page['next_offset']}, "
+            f"max_chars={page_chars})]"
+        )
+    if info.get("tool_name"):
+        body += f"\n[source_tool: {info['tool_name']}]"
+    return body
+
+
+async def _fetch_url(url: str) -> str:
+    current = str(url or "").strip()
+    if not current:
+        return _err("param_error", "missing URL", "Provide a full URL.")
+    try:
+        async with httpx.AsyncClient(follow_redirects=False, timeout=10.0) as client:
+            for _redirect in range(6):
+                parsed = urlparse(current)
+                if parsed.scheme not in ("http", "https"):
+                    return _err(
+                        "param_error", f"unsupported scheme: {parsed.scheme}",
+                        "Use http:// or https://.",
+                    )
+                if not parsed.hostname:
+                    return _err(
+                        "param_error", "missing host in URL",
+                        "Provide a full URL.",
+                    )
+                if _is_private_host(parsed.hostname):
+                    return _err(
+                        "param_error",
+                        f"blocked host (internal/private): {parsed.hostname}",
+                        "Only public hosts are reachable.",
+                    )
+
+                async with client.stream(
+                    "GET", current, headers={"User-Agent": "Mozilla/5.0"},
+                ) as response:
+                    if response.is_redirect:
+                        location = response.headers.get("location", "")
+                        if not location:
+                            return _err(
+                                "param_error", "redirect without Location",
+                                "Use the final public URL.",
+                            )
+                        current = str(response.url.join(location))
+                        continue
+                    response.raise_for_status()
+                    chunks: list[bytes] = []
+                    received = 0
+                    async for chunk in response.aiter_bytes():
+                        remaining = (_MAX_FETCH_BYTES + 1) - received
+                        if remaining > 0:
+                            chunks.append(chunk[:remaining])
+                            received += min(len(chunk), remaining)
+                        if received > _MAX_FETCH_BYTES:
+                            break
+                    raw = b"".join(chunks)
+                    text = raw[:_MAX_FETCH_BYTES].decode(
+                        "utf-8", errors="replace",
+                    )
+                    if len(raw) > _MAX_FETCH_BYTES:
+                        text += f"\n...[truncated — {_MAX_FETCH_BYTES} bytes shown]"
+                    return text
+            return _err(
+                "param_error", "too many redirects",
+                "Use the final public URL.",
+            )
     except httpx.TimeoutException:
         return _err("transient", "fetch timed out", "Retry once.")
     except httpx.HTTPStatusError as e:
         return _err("param_error", f"HTTP {e.response.status_code}", "Check the URL.")
     except httpx.HTTPError as e:
         return _err("transient", f"fetch failed: {e}", "Retry once.")
-    return _truncate(r.text, _MAX_FETCH_BYTES)
 
 
 # ---- ToolDef 描述 ----
@@ -288,6 +401,36 @@ GENERIC_TOOLDEFS = [
         annotations={"readOnlyHint": False, "idempotentHint": True},
     ),
     ToolDef(
+        name="artifact_read",
+        description=(
+            "Read a page from an oversized tool result by artifact_id. Use the "
+            "artifact_id and continuation offset returned by the original call. "
+            "This is the generic continuation path for non-paginated tools."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "artifact_id": {
+                    "type": "string",
+                    "description": "Artifact id returned by a tool result.",
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Character offset to read from.",
+                    "default": 0,
+                },
+                "max_chars": {
+                    "type": "integer",
+                    "description": "Maximum characters to return (max 5000).",
+                    "default": 5000,
+                },
+            },
+            "required": ["artifact_id"],
+        },
+        source="generic",
+        annotations={"readOnlyHint": True, "idempotentHint": True},
+    ),
+    ToolDef(
         name="fetch_url",
         description=(
             "Fetch the content of a public web URL over http/https. Returns the "
@@ -309,6 +452,7 @@ GENERIC_FUNCS = {
     "get_time": _get_time,
     "calculator": _calculator,
     "write_file": _write_file,
+    "artifact_read": _artifact_read,
     "fetch_url": _fetch_url,
 }
 
@@ -316,7 +460,7 @@ GENERIC_FUNCS = {
 # 暴露白名单：研究 agent 只用文件 explorer 三件套。
 # get_time / calculator / fetch_url 代码保留（通用能力、将来通用 agent 复用），
 # 但不注册进工具面——对研究 agent 是死重。
-_EXPOSED_TOOLS = {"read_file", "list_dir", "write_file"}
+_EXPOSED_TOOLS = {"read_file", "list_dir", "write_file", "artifact_read"}
 
 
 class GenericProvider(ToolProvider):

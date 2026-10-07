@@ -4,20 +4,28 @@
 
 ## 环境
 
-### conda activate 在 bash 中无效
+### conda 环境未激活导致依赖“缺失”
 
-**现象**: `conda activate demo` 报错或无效。
+**规范**: 项目环境启动命令是 `conda activate demo`。Python 测试和后端命令必须
+在该环境中运行。
 
-**原因**: conda 未在 bash 中 init。
+**现象**: 未激活 `demo` 时运行测试，可能误报 `langgraph` 等已安装依赖缺失。
 
-**解决**: 所有 bash 命令使用 Python 解释器直接路径：
+**解决**:
 
 ```bash
-C:/Users/30811/miniconda3/envs/demo/python.exe -m pip install ...
-C:/Users/30811/miniconda3/envs/demo/python.exe script.py
+conda activate demo
+python -m pytest ...
 ```
 
-终端中手动 `conda activate demo` 后可正常使用 `python` / `pip`。
+若非交互 bash 无法加载 conda 激活脚本，使用：
+
+```bash
+conda run -n demo python -m pytest ...
+```
+
+仅在前两种方式都不可用时，才回退到
+`C:/Users/30811/miniconda3/envs/demo/python.exe`。
 
 ---
 
@@ -221,6 +229,22 @@ export HF_ENDPOINT=https://hf-mirror.com
 ```
 
 或将模型预先下载到本地，使用本地路径加载。
+
+---
+
+### 直连 arXiv 被重置（Connection reset）
+
+**现象**: `curl https://export.arxiv.org/api/query?...` 或 `https://arxiv.org` 返回 `curl (35) Recv failure: Connection was reset` / HTTP 000（含沙箱外）；`export.arxiv.org` API 与 `arxiv.aaies.cn` 等第三方镜像同样不可达。
+
+**原因**: China 网络下 arXiv 主站/API 被连接重置；第三方镜像不可靠。
+
+**解决**: 用官方国内镜像 `cn.arxiv.org`：
+```bash
+# 可访问：abs 页、pdf 下载
+curl -sSL -o paper.pdf https://cn.arxiv.org/pdf/{arxiv_id}
+# 不可用：export API（/api/query 会 reset）、历史月份 listing（/list/cs.CL/2509 → 404，只留近月）
+# 找论文 ID：WebSearch 查后先用 curl -sSL -o /dev/null -w "%{http_code}" https://cn.arxiv.org/abs/{id} 验证 200
+```
 
 ---
 
@@ -574,3 +598,125 @@ finally:
 
 验证: `pytest agent/tests` 不回归; POST `/api/agent/chat/stream` 复现原问题,断言任一叶子
 工具只出现一次且带 `parent_id`; 前端 dev 模式无 React duplicate key 警告。
+
+## evaluation / aiosqlite 跨事件循环挂死 + 进程退出被 worker 线程阻塞
+
+**现象**: `python -m evaluation list`（或任何一次性 CLI）要么执行中途挂死，
+要么命令正常结束但进程不退出（`timeout` 后 kill）。
+
+**原因**:
+1. `TraceStore` 单例的 aiosqlite 连接在第一个 `asyncio.run` 的 loop 里创建，后续
+   查询若又包一层 `asyncio.run`（第二个 loop），连接的结果 Future 仍绑旧 loop →
+   `await execute` 永不返回。
+2. aiosqlite 的 connection worker 线程是**非 daemon**：连接不 close 时进程退出挂住。
+
+**解决**:
+1. 一次性 CLI（list/show/prune/run）全部收敛到**单个 `asyncio.run`** 内完成
+   「建连→查询→`await store.close()`」，不跨 loop 复用连接（`evaluation/__main__.py`）。
+2. `trace_store.get_trace_store` 注册 `atexit` 兜底：进程退出前若连接仍开且无活跃
+   事件循环，`asyncio.run(store.close())` 释放 worker 线程（服务端长驻场景跳过）。
+3. 排查工具：加 `-X faulthandler` + 缩短 `dump_traceback_later` 看卡在哪条 await。
+4. **测试脚本**：`TraceStore` 的收尾必须放在 `finally` 里（见
+   `evaluation/tests/test_live.py::_close_store`）——断言失败时若跳过 `await store.close()`，
+   aiosqlite 的非 daemon worker 会让整个测试脚本退不出去，表现为「测试挂死」而不是「测试失败」。
+
+同类教训：**异步资源（sqlite/redis 连接）生命周期 = 创建它的 loop**；单进程多
+`asyncio.run` 场景要么单 loop 做完所有事，要么在 loop 内显式 close。
+
+## evaluation / 实时进度（SSE）看不到数据 / 指标不更新
+
+**先分清 run 是哪来的**：
+- **本进程发起的 run**（前端 `POST /api/eval/runs`、CLI 同进程）→ 走内存总线
+  （`evaluation/live.py`），逐条明细 + 累计指标都是实时的。
+- **别的进程的 run**（另一个 uvicorn worker / 独立 CLI）→ `/runs/{id}/stream` 退回
+  每 2s 轮询 `eval_runs` 行，事件同构但**指标粒度只到「已完成条数」**，没有逐条明细
+  （`source: "db"` 可区分）。这是设计内的降级，不是故障。
+
+**常见现象**：
+| 现象 | 原因 / 处理 |
+|---|---|
+| 订阅立刻 404 | run_id 不存在，或 `trace_store.db` 被清（进度行与报告都在这一个库里）。正常路径不会：`POST /api/eval/runs` 在返回前就写好 `status=running` 的进度行 |
+| 前端进度条不动 | 列表/报告页数据来自 5s 轮询 + 进度行；确认跑批进程还活着（`python -m evaluation list` 看 status） |
+| 行长期停在 `running` | 跑批进程被 kill（没机会写终态）。重跑同 `--run-id` 会覆盖该行；报告 `run_summary.json` 不存在即为未跑完 |
+| EventSource 反复重连 | 断线是正常的自动重连；服务端在 (重)连时回放缓冲历史，`heartbeat` 帧保活，前端忽略 |
+
+**手工验证**：`curl -N http://127.0.0.1:8000/api/eval/runs/<run_id>/stream`
+（本机窗口 `curl -N` 会持续打印 `data: {...}` 帧，看到 `run_finished` 即结束）。
+
+## agent / MCP stdio 收尾挂死（`RuntimeError: Attempted to exit cancel scope`）
+
+**现象**：一次性 CLI 跑 agent react 循环（工具装配含 MCP stdio server，如 arxiv）后，
+进程收尾阶段打印
+`Exception Group … mcp/client/stdio … RuntimeError: Attempted to exit cancel scope in a different task …`，
+进程可能挂住不退出（MCP 子进程继承 stdout 还会让 CI/后台任务管道不关闭）。`evaluation.verify_smith`
+早前因此拿不到 LangSmith 回读结论。
+
+**原因**：`mcp` Python SDK 的 `stdio_client` 用 anyio TaskGroup 管理 cancel scope；在
+`asyncio.run` 的 loop 关闭（`shutdown_asyncgens` → async generator `__aexit__`）时，
+cancel scope 的进入/退出跨了任务，anyio 抛 `RuntimeError`，teardown 被卡住。
+
+**解决**：
+1. **CLI 一次性脚本**：拿到结论后 `sys.stdout.flush(); os._exit(code)` 绕过 asyncio 收尾
+   （`evaluation/verify_smith.py::_halt` 即此约定）。不要回到 `asyncio.run` 的正常返回路径。
+2. **观察完整链路**：优先在 uvicorn 长驻服务 / 前端 SSE 会话里跑（该问题只在进程退出时触发）。
+3. **根治方向**（未实施）：升级 `mcp` 版本或工具使用结束后显式
+   `await client.__aexit__` 关闭 stdio 会话；暂不阻塞评测。
+
+---
+
+## LangSmith / SDK 0.8 把 `get_run` 改名为 `read_run`（回读静默失败）
+
+**现象**：`python -m evaluation.verify_smith ...` 断言始终失败，提示「60s 内未能在 LangSmith
+看到 run」；`python -m agent.core.trace_export <trace_id>` 报
+`AttributeError: 'Client' object has no attribute 'get_run'`——但对话本身已成功、LangSmith 控制台里能看到 run。
+
+**原因**：`langsmith >= 0.8` 把 `Client.get_run` 重命名为 `Client.read_run`（`get_run_url`
+仍在）。旧调用点被 `except Exception` 的轮询/容错吞掉，表现为「回读超时」而不是报错。
+
+**解决**：
+1. 回读统一走 `agent.core.trace_export.read_root_run(client, run_id)`——先试 `read_run`，
+   再回退 `get_run`，跨版本都能用（`verify_smith` 已改为调用它）。
+2. 排查同类问题时不要用 `except Exception` 静默：先单独 `print(type(exc).__name__)` 看是不是
+   `AttributeError`（SDK 改名）而不是网络/索引延迟。
+3. 相关：`python -m agent.core.trace_export` 会校验 run id 是否为合法 UUID，传入
+   `deadbeef` 这类非 UUID 会直接报 `run_id must be a valid UUID or UUID string`（预期行为）。
+
+---
+
+## agent/CLI / 一次性脚本正常跑完却不退出（trace_export 的 `_halt` + 线程截止时间）
+
+**现象**：`python -m agent.core.trace_export <trace_id>` 在无网络/无 LangSmith 的机器上
+长时间不返回；即使打印了结论，进程仍挂住（同 `## evaluation / aiosqlite ...` 与
+`## agent / MCP stdio 收尾挂死` 一类）。
+
+**原因**（两层）：
+1. `langsmith.Client()` 构造与 `read_run` 各自带 SDK 重试/超时策略，端点不可达时单次调用
+   可能远超调用方预算；`TraceStore` 的 aiosqlite worker 线程又是**非 daemon**，连接不关时
+   进程退出被阻塞。
+2. 任何被 `except Exception` 包住的 SDK 调用都会把「连不上」表现成「一直等待」。
+
+**解决**（`agent/core/trace_export.py` 已内建，其他 CLI 照此办理）：
+1. **阻塞 SDK 调用放进 daemon 线程 + 硬截止**：`_call_with_deadline(fn, seconds, what)`
+   —— 超时抛 `TimeoutError`，被丢弃的线程不会阻塞进程退出；客户端构造同样受此约束。
+2. **一次性 CLI 用 `os._exit(code)` 返回**：`main()` 的 `_halt()` 先 flush stdout/stderr
+   再退出，绕开 asyncio/anyio/sqlite 收尾。
+3. 评测跑批里的导出（`EVAL_EXPORT_LANGSMITH=1`）走 `asyncio.to_thread(export_best_effort)`：
+   网络不可达只留一条 `langsmith_export_failed` 警告，绝不改变评测报告。
+
+---
+
+## agent/tests / `list_dir("agent")` 报 `not a directory: agent`
+
+**现象**：`agent/tests/test_generic.py::test_read_and_list_work` 失败，返回
+`{"ok": false, "error_type": "param_error", "error": "not a directory: agent"}`。
+
+**原因**：`read_file`/`list_dir` 的相对路径解析基准是**配置中心的工作区根**
+（`web/workspace/settings.json` 的 `project_path`，`agent/workspace_config.get_project_root()`），
+不是仓库根。本机把 `project_path` 设成 `C:\Users\30811\pre\Demo\data` 后，`agent` 自然不是目录。
+
+**解决**：
+1. 想按仓库根验证工具：临时清掉/改回 `project_path`（设置页「通用」板块），或
+2. 断言里改用工作区内的相对路径（例如 `data` 下的实际目录），或在测试里用
+   `agent/workspace_config.set_override()` 注入 root。
+3. 与 Phase E 的工具治理无关：`GenericProvider.call_tool` 不经 `ToolDispatcher`/`ToolGateway`，
+   失败与 gateway 改动无关（排查时先看错误码是不是 `param_error`）。

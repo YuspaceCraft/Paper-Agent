@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "52d8ef4ca0af3cc1d0e915f7d5ef66b2",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "a89da1ec9f014e3fa5da6e6c269319bf",
+    "execution_id": "fde932833fb944bf95d30e86ed378987",
+    "thread_id": "evalqa:eval_b4aed4d5:rag_medium_medium_textcaps_vs_coco",
+    "tool_name": "search_papers",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 46.999999962281436,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "c2b2c17fd6d15f12d45f778c4e27c71b",
+      "sha256": "c2b2c17fd6d15f12d45f778c4e27c71b158cada6ec62b6c68c50d08aae811939",
+      "bytes": 4590,
+      "chars": 4590,
+      "media_type": "application/json",
+      "tool_name": "search_papers",
+      "execution_id": "fde932833fb944bf95d30e86ed378987",
+      "thread_id": "evalqa:eval_b4aed4d5:rag_medium_medium_textcaps_vs_coco",
+      "created_at": "2026-09-20T01:36:39.733858+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\c2\\c2b2c17fd6d15f12d45f778c4e27c71b.txt"
+    }
+  ],
+  "data": {
+    "results": [
+      {
+        "chunk_id": "2003.12462v2__chunk_0009",
+        "paper": "2003.12462v2",
+        "section": "3.2 Dataset analysis",
+        "text": "Meanwhile, the average answer length is 1.53 for TextVQA, 1.51 for ST-VQA and 3.31 for OCR-VQA - much smaller than the captions in our dataset. Typical answers like 'yes' , 'two' , 'coca cola' may be sufficient to answer a question but insufficient to describe the image comprehensively.\n\nFig. 4 compares the percentage of captions with a particular number of OCR tokens between COCO and TextCaps datasets. 4 TextCaps has a much larger number of OCR tokens in the captions as well as in the images compared to COCO (note the high percentage at 0). A small part (2.7%) of COCO captions which contain OCR tokens is mostly limited to one token per caption; only 0.38% of captions contain two or more tokens. Whereas in TextCaps, multi-word reading is mu",
+        "score": 0.6071486465378727
+      },
+      {
+        "chunk_id": "2003.12462v2__chunk_0010",
+        "paper": "2003.12462v2",
+        "section": "",
+        "text": "Figure description: This figure visualizes the distribution of OCR token occurrences to characterize dataset textual density. By comparing frequency histograms for TextCaps, Text-VQA, and COCO, it demonstrates that TextCaps contains a significantly higher volume of OCR tokens.",
+        "score": 0.5272922516408799
+      },
+      {
+        "chunk_id": "2003.12462v2__chunk_0003",
+        "paper": "2003.12462v2",
+        "section": "1 Introduction",
+        "text": "the image to generate coherent descriptions.\n- -We analyse our dataset, and find it has several new technical challenges for captioning , including the ability to switch multiple times between OCR tokens and vocabulary, zero-shot OCR tokens, as well as paraphrasing and inference about OCR tokens.\n\n- -We analyse our dataset, and find it has several new technical challenges for captioning , including the ability to switch multiple times between OCR tokens and vocabulary, zero-shot OCR tokens, as well as paraphrasing and inference about OCR tokens.\n- -Our evaluation shows that standard captioning models fail on this new task , while the state-of-the-art TextVQA [33] model, M4C [17], when trained with our dataset TextCaps, gets encouraging resu",
+        "score": 0.3563699322680494
+      },
+      {
+        "chunk_id": "2003.12462v2__chunk_0002",
+        "paper": "2003.12462v2",
+        "section": "1 Introduction",
+        "text": "be mentioned in the sentence and which OCR tokens should be joined together ( e.g . in Fig. 1b: '5:35' denotes the current time and should not be joined with 'ON TIME'), based on their (a) semantics (Fig. 2b), (b) spatial relationship (Fig. 1c), and (c) visual appearance and context (Fig. 2d).\n\n1. Determine the relationships between different OCR tokens and between OCR tokens and the visual context , to decide if an OCR token should be mentioned in the sentence and which OCR tokens should be joined together ( e.g . in Fig. 1b: '5:35' denotes the current time and should not be joined with 'ON TIME'), based on their (a) semantics (Fig. 2b), (b) spatial relationship (Fig. 1c), and (c) visual appearance and context (Fig. 2d).\n2. Switching multiple time",
+        "score": 0.35190945102885507
+      },
+      {
+        "chunk_id": "2003.12462v2__chunk_0011",
+        "paper": "2003.12462v2",
+        "section": "4 Benchmark Evaluation",
+        "text": "Figure 5b illustrates that due to the common use of OCR tokens in the captions, models required to switch between OCR and vocabulary words often. The majority of the TextCaps captions require to switch twice or more, whereas most COCO and TextVQA outputs can be generated even without any switches.\n\n## 4 Benchmark Evaluation",
+        "score": 0.34090551309281925
+      }
+    ],
+    "papers": [
+      "2003.12462v2"
+    ],
+    "total": 5
+  }
+}

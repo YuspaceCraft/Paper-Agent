@@ -17,6 +17,7 @@ interface Props {
   apiOnline: boolean;
   settings: Settings | null;
   onOpenConfig: () => void;
+  onOpenEvaluation: () => void;
 }
 
 const barStyle: React.CSSProperties = {
@@ -40,7 +41,10 @@ const btnStyle: React.CSSProperties = {
   gap: 4,
 };
 
-export const TopBar: FC<Props> = ({ leftPanelOpen, rightPanelOpen, onToggleLeft, onToggleRight, apiOnline, settings, onOpenConfig }) => {
+export const TopBar: FC<Props> = ({
+  leftPanelOpen, rightPanelOpen, onToggleLeft, onToggleRight,
+  apiOnline, settings, onOpenConfig, onOpenEvaluation,
+}) => {
   const isCustom = !!settings?.project_path;
 
   return (
@@ -60,6 +64,14 @@ export const TopBar: FC<Props> = ({ leftPanelOpen, rightPanelOpen, onToggleLeft,
       title="配置中心（通用 / 实验 / 工具 / MCP / Skills）"
     >
       ⚙ 配置{isCustom ? ' ·已配置' : ''}
+    </button>
+
+    <button
+      style={{ ...btnStyle, border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer' }}
+      onClick={onOpenEvaluation}
+      title="评测中心（系统开发过程的改动与质量评估）"
+    >
+      ◫ 评测
     </button>
 
     <span style={{

@@ -82,7 +82,7 @@ after_agent (pure function)
 
 对照 [docs/agent-multiagent-plan.md](../docs/agent-multiagent-plan.md) 执行。不改单 agent 主干，在其上叠两层：
 
-- **Plan 范式（Phase 7 / v14 LLM 逐步执行）**：`plan.py` 的 `decide_mode`（纯启发式，无 LLM：对比关键词 / ≥2 子问题 / **resolve 确证 ≥2 篇论文**；`requested_mode` 客户端覆盖优先）+ `plan_node`（LLM 直接输出 JSON 步骤表，`_ask_for_plan` 解析）+ `executor_node`（拓扑序**顺序执行**，v14：`target:"auto"` 步骤走 `_run_step_agent` LLM 逐步执行、`tool`/subagent 步骤走确定性 `_run_step`）+ **`verify_node`（计划完成验证，报告式）**。多论文对比 / 多子问题走 plan，简单查询走 react（零回归）。
+- **Plan 范式（Phase 7 / v14 LLM 逐步执行）**：`plan.py` 的 `decide_mode`（纯启发式，无 LLM：对比关键词 / ≥2 子问题 / **resolve 确证 ≥2 篇论文**；`requested_mode` 客户端覆盖优先）+ `plan_node`（LLM 直接输出 JSON 步骤表，`_ask_for_plan` 解析）+ `executor_node`（拓扑序**顺序执行**，v14：`target:"auto"` 步骤走 `_run_step_agent` LLM 逐步执行、`tool`/subagent 步骤走确定性 `_run_step`）+ **`verify_node`（计划完成验证，报告式）**。多论文对比 / 多子问题走 plan，简单查询走 react（零回归）。**主信号 = 理解层按任务结构的 `needs_planning`**（UNDERSTAND_SYSTEM 结构字段：单动作 vs 需分解，通用覆盖下载/翻译/收藏/润色一句等一切单动作请求，不枚举动词——单动作进 plan 会无步骤可拆 → 空计划）；`decide_mode` 以标签为主，叠加原则性兜底：可观测 ≥2 篇确证论文强制 plan（结构约束 > 标签），无标签的旧状态回落 v15 前启发式（域/对比/子问题）。
 - **Multi-Agent（Phase 8，Claude Code 模式）**：`subagents.py` 新增 `build_subagent`（编译子图：复用 `agent_node`/`ToolNode`/`after_agent`，仅改受限工具集 + 专属 prompt + 独立上下文）+ `as_tool`（把子图包装成父层可调工具，父层只见「任务 → 摘要」，看不到子 agent 内部正文）。**库只读工具归父 agent，2 个写/外网 subagent（arxiv/ingest）** 通过声明式配置表 `SUBAGENTS` 加入父层工具列表。
 
 ### 模式判定（代码启发式，无额外 LLM 调用）
@@ -176,11 +176,13 @@ after_agent (pure function)
 ### 领域路由：paper / creation / coding
 
 ```
-understand（LLM 输出 domain label）→ route_intent → resolve → domain_node → decide_mode
-                                            │                          │
-                                            │                          └─ react | plan（
-                                            │                              creation/coding 强制 plan）
-                                            └───────────（chat / clarify 不变）
+understand（LLM 输出 intent + domain + needs_planning）→ route_intent → resolve → domain_node → decide_mode
+                                            │                              │
+                                            │                              └─ react | plan（
+                                            │                                 主信号 needs_planning：
+                                            │                                 单动作→react，需分解→plan；
+                                            │                                 兜底：≥2确证论文 或 旧态域规则）
+                                            └─────────────（chat / clarify 不变）
 ```
 
 - `UnderstandResult.domain`（state.py）: LLM 粗标（paper|creation|coding，默认 paper）。
@@ -286,8 +288,9 @@ target="creator"）→ `_creation_plan` 里 **`_ensure_writing_doc` 建 doc + �
     created_at/updated_at/error/output。进程重启后 running 无活任务标 `orphaned`。
   - 状态推进：pending → running → done/failed/interrupted/cancelled。
 - **`agent/providers/task_provider.py`**（父 agent 工具面，6 个监督工具）：
-  `task_dispatch` / `task_progress` / `task_collect` / `task_resume` / `task_cancel`
-  / `task_list`。dispatch/resume/cancel 走权限门（destructive）。
+`task_dispatch` / `task_progress` / `task_collect` / `task_resume` /
+`task_recover` / `task_cancel` / `task_list`。dispatch/resume/recover/cancel
+走权限门（destructive）。
 - **`agent/task_registry.py`**（统一监督视图，只读叠加层）：合并「派发舱 + 实验
   （domains/coding）+ 写作文档（domains/creation）+ Redis 后台任务栈
   （web/api/routers）」，`find_tasks(term, kind)` 按 kind 近义词 / id 形似 / 标题模糊匹配。
@@ -318,7 +321,7 @@ target="creator"）→ `_creation_plan` 里 **`_ensure_writing_doc` 建 doc + �
 |---|---|---|
 | `task_dispatch` | supervisor | 派发长任务到隔离子 agent（role + 自包含 task → task_id，后台运行） |
 | `task_progress` / `task_collect` | supervisor | 读状态栈（next/iteration/interrupt）/ 收产出验收 |
-| `task_resume` / `task_cancel` | supervisor | 领导干预：回复 interrupt 续跑 / 取消 |
+| `task_resume` / `task_recover` / `task_cancel` | supervisor | 领导干预：回复 interrupt 续跑 / 接管租约过期的 orphaned 任务 / 取消 |
 | `task_list` | supervisor | 全部派发任务快照 |
 
 自检：`python agent/tests/test_supervisor.py`（dispatch→progress→collect /
@@ -441,7 +444,7 @@ result2 = await run("How does it compare?", thread_id="paper_rmnet")
 | `config_store.py` | **配置中心键值存储** — web/workspace/config.json（experiment 委托配置 / tools 停用集合 / skills 停用）；原子写盘 + 命名空间 get/set + 类型化 getter（`get_delegate_prefer`/`get_disabled_tools`/`get_disabled_skills`）；消费端：subagents 停用过滤、skill_provider 停用过滤、coding.delegate 委托通道 |
 | `supervisor.py` | **领导-部门制派发器**（v12）— 子 agent 任务舱运行时：`dispatch`/`progress`/`collect`/`resume`/`cancel`/`list_tasks` + `AsyncSqliteStore` 元数据（`task_store.db`）+ `AsyncSqliteSaver` 线程（thread_id=task_id）+ 后台 Runner + 事件隔离 |
 | `task_registry.py` | **统一任务监督视图**（v12）— 合并派发舱+实验+写作 doc+Redis 任务栈；`find_tasks(term, kind)` 供 task_node / /api/tasks |
-| `providers/task_provider.py` | **监督工具 Provider**（v12）— `task_dispatch/progress/collect/resume/cancel/list`（父 agent 工具面，信封 + 权限门） |
+| `providers/task_provider.py` | **监督工具 Provider**（v12）— `task_dispatch/progress/collect/resume/recover/cancel/list`（父 agent 工具面，信封 + 权限门） |
 | `state.py` | AgentState（分层设计 + 治理预算字段）+ UnderstandResult |
 | `docling_parser.py` | Docling PDF 解析器（PDF → Markdown） |
 | `academic_chunker.py` | 学术文献切分（章节感知） |
@@ -501,7 +504,7 @@ async for msg, metadata in agent.astream(
 | `fetch_content` | builtin | 本地论文精读：`paper_name` + `section`（空 section = 概览/章节清单） |
 | `check_paper` | builtin | **入库决策梯第一步**：本地检测（Redis 已入库`indexed` → 本地产物`downloaded_not_indexed` → `absent`），只读/幂等，无网络。论文 `state` 语义两类（indexed/not_indexed），parsed/raw 由 `detail` 派生（方案 B） |
 | `check_task_status` | builtin | **后台任务栈查询**：按 task_id 返回 pending/running/done/failed + progress/error/result（v9 新增，用户问"入库好了吗"时用） |
-| `task_dispatch` / `task_progress` / `task_collect` / `task_resume` / `task_cancel` / `task_list` | supervisor | **领导-部门制监督工具**（v12）— 派发长任务到隔离子 agent / 读状态栈 / 收产出验收 / 回复 interrupt 续跑 / 取消 / 列表。父 agent 全量持有 |
+| `task_dispatch` / `task_progress` / `task_collect` / `task_resume` / `task_recover` / `task_cancel` / `task_list` | supervisor | **领导-部门制监督工具**（v12）— 派发长任务到隔离子 agent / 读状态栈 / 收产出验收 / 回复 interrupt 续跑 / 接管 orphaned 任务 / 取消 / 列表。父 agent 全量持有 |
 | `read_file` / `list_dir` / `write_file` | generic | 文件 explorer 三件套，桌面客户端右侧面板可见 |
 | `skill__list` / `skill__load` | skills | 列/加载技能 |
 | `arxiv` / `ingest` | subagents | 委派写/外网任务给 subagent，父层只见「任务 → 摘要」 |
@@ -528,11 +531,11 @@ async for msg, metadata in agent.astream(
 
 信封生成/解析/截断的唯一权威是 **`agent/tool_contract.py`**：
 
-- `ok(data)` / `err(error_type, detail, next_action="", **ctx)` 生成统一 JSON envelope；
-  结构化/库工具（builtin / creation / coding）成功 → `{"ok": true, "data": {...}}`；
-  失败 → `{"ok": false, "error", "error_type": "param_error|transient|permission_denied|not_found|unknown", "next", 附加字段如 available_papers}`。
+- `success(data)` / `failure(error_type, detail, next_action="", **ctx)` 生成统一 JSON operation envelope；
+  结构化/库工具（builtin / creation / coding）成功 → `{"outcome": "succeeded", "data": {...}}`；
+  失败 → `{"outcome": "failed", "error", "error_type": "...", "next", ...}`。
   纯文本工具（`read_file`/`list_dir`/`get_time`/`calculator`/`fetch_url` 成功路径）保证「不是合法 envelope」的 UTF-8 文本。
-- `parse_tool_result(content)` → ToolResult（`is_envelope`/`ok`/`data`/`text`/`error`/`error_type`/`next_action`/`extra`）是**唯一解析入口**：`build_tools_node`、`_classify_tool_error`、`_salvage_tool_content`、`plan._ingest_guard` 全部经它分流，不再各自猜格式。
+- `parse_tool_result(content)` → ToolResult（`is_envelope`/`outcome`/`data`/`text`/`error`/`error_type`/`next_action`/`extra`）是**唯一解析入口**，旧 `ok` envelope 直接判协议错误。
 - `truncate_tool_result(text, limit)` 字符级截断但保持 envelope 可解析（截在 `data` 内部），避免截断把 JSON 切成半截整体作废。
 - `dispatcher` 捕获异常也归一化为此信封（不再 `raise`）。
 
@@ -605,7 +608,53 @@ agent ↔ tools 循环的复杂性封装在一个编译单元内，父图只关�
 - **P1 marker 协议已删除**：`AGENT_SYSTEM` Response Protocol 改为「回答 YES 直接写最终答案」，不再要求 `[FINAL_ANSWER]`。终止判定（`after_agent`）本就不依赖它。残留 marker 由统一正则 `[\[【]\s*final\s*[-_ ]?\s*answer\s*[\]】]`（IGNORECASE）在 `_stream_llm`（前缀缓冲 → 任意位置行过滤，容忍首 chunk `"\n"`/全角括号/分隔符变体）与 `router._strip_marker` 兜底过滤，杜绝流入 UI / checkpoints / memory 摘要。
 - **P2 contextvar 通道已删除**：`resolution._resolved_ctx` 侧通道移除（不可见 / 非零状态 / 无生命周期）。`state["resolved"]` 仍是 checkpointed 官方状态；父代理按 AGENT_SYSTEM「Delegation Priority」把 Discovery Hints 的 `match` 论文名显式写进 subagent task。
 - **P3 subagent 返回提取收紧**：`as_tool._call` 只取「无 tool_calls 的最后一个 AI 文本」——带 tool_calls 的 AI 消息仍是中途状态（max_steps 截断前正计划下一步），不再当答案。
-- **P4 plan executor 错误恢复**：直接工具步骤失败时确定性重试一次——`transient` 原参数；`param_error` + `available_papers/sections` 按 error envelope 修正参数（同步骤内，不级联依赖步骤重跑）。`not_found`/`backend_down` 不重试，失败原因进 `subagent_results` 由 synthesize 标注。`_run_step` 把「调用成功但信封 ok=false」归一为 `ok=False`。
+- **P4 plan executor 错误恢复**：直接工具步骤失败时确定性重试一次——`transient` 原参数；`param_error` + `available_papers/sections` 按 error envelope 修正参数（同步骤内，不级联依赖步骤重跑）。`not_found`/`backend_down` 不重试，失败原因进 `subagent_results` 由 synthesize 标注。`_run_step` 统一写 `outcome=failed`。
 - **P5 SSE AIMessageChunk 分支删除**：节点内手动 `model.astream()` 不产生 graph 级 messages 流 chunk（实证），token 事件只经 `_ev_pump`（`_stream_llm` → event 队列）一条路；`_msg_pump` 只处理节点最终 AIMessage（tool_calls 边界）与 ToolMessage。
+
+## Agent 平台架构落地（`docs/agent-platform-architecture.md`）
+
+设计文档的 P0/P1/P2 主体已落地，ADR 在 `docs/adr/`（0001–0006），可读契约在
+`docs/contracts/`（工具信封 / 错误码 / 状态机与 API）。核心新增模块：
+
+| 模块 | 职责 |
+|---|---|
+| `agent/core/contracts.py` | `ErrorType/Permission/PromptType/AgentError/ToolSpec/RetryPolicy/Budget/PromptSpec/ExecutionContext` |
+| `agent/core/execution_context.py` | 每轮 `ExecutionContext` 工厂 + `contextvars` 传播 + `child_config()` |
+| `agent/core/configuration.py` | `ConfigurationSnapshot`（revision/hash/limits/prompt 版本/工具注册表 hash） |
+| `agent/core/tool_registry.py` | `ToolDef → ToolSpec` 声明式注册表 + `registry_hash` |
+| `agent/core/policy.py` | 角色权限矩阵、审批判定、参数校验、幂等键 |
+| `agent/core/tool_gateway.py` | 工具唯一入口：七步治理链（含熔断、脱敏审计 `tool_audit`） |
+| `agent/core/context_pack.py` | 分区预算 Context Pack（invariant/task/conversation/retrieved/memory/reserve） |
+| `agent/core/memory_policy.py` | `MemoryRecord` / `MemoryPolicy`（置信度、TTL、consent、按类型/ID 禁用） |
+| `agent/core/trace_export.py` | LangSmith run 树导出到 `eval_output/runs/<trace_id>/langsmith_runs.jsonl` |
+
+行为要点：
+
+- **每轮冻结一次元数据**：`agent.graph.prepare_turn` 同时被 `graph.run`、
+  `/api/agent/chat`、`/api/agent/chat/stream` 使用 → 三条入口同一契约
+  （root run id == 本地 `trace_id`，metadata 含身份/预算/prompt 绑定/工具版本）。
+- **工具调用只有一条路**：`ToolDispatcher.call` 委托 `ToolGateway.invoke`；
+  dispatcher 保留 SSE（`tool_start/tool_end`）与评测事件（`tool_call`、
+  `retrieved_context`），gateway 负责权限/审批/幂等/超时/熔断/重试/审计。
+  新增调用点必须用 `ExecutionContext.child_config()` 透传父 config。
+- **上下文预算可解释**：`memory_node` 在原有 `context_snapshot` 之外把分区
+  预算与来源写入 `context_decision["pack"]`（只记元数据，不含 prompt 文本）。
+
+自检：`python agent/tests/test_tool_gateway.py`、
+`python agent/tests/test_context_pack.py`、`python agent/tests/test_core_contracts.py`
+（无 LLM、无网络）。
+
+Phase E 功能项已闭环；`core/` 之外的物理目录不做一次性搬迁，后续按明确收益
+增量迁移。
+
+### P3 模型路由 / 读缓存 / 成本
+
+- `AGENT_MODEL_SMALL` 可把 router/summary/notifier 切到小模型；默认不改变主模型。
+- `AGENT_MODEL_ROUTES` 接受 JSON，按 task 精确覆盖模型：
+  `{"router":"qwen-turbo","planner":"qwen-plus"}`。
+- 实际每个 task 的模型选择冻结在 `ConfigurationSnapshot.model_routes`，trace 可复现。
+- `AGENT_TOOL_READ_CACHE_TTL` / `AGENT_TOOL_READ_CACHE_MAX` 控制只读工具缓存；
+  默认只缓存 `search_papers/fetch_content` 与 arXiv 检索类工具，写操作成功后清空。
+- 评测报告 `cost` 提供 per-model / per-node / cache 维度，并在 overall 给出单成功任务成本与 token。
 
 回归测试：`agent/tests/test_info_flow.py`（P1 marker + P6 契约）、`agent/tests/test_plan.py`、`agent/tests/test_subagents.py`、`agent/tests/test_loop.py`。

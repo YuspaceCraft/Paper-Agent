@@ -27,6 +27,8 @@ from agent.providers.mcp_provider import (
 from agent.providers.skill_provider import discover_skills
 from agent.subagents import SUBAGENTS
 from agent.tools import PARENT_NAMES, ensure_tools, get_base_tools, reload_tools
+from agent.prompt_store import canary_rules, list_prompt_specs
+from agent.core.prompt_registry import prompt_ids
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -114,7 +116,10 @@ async def update_tools(body: UpdateToolsBody):
         await reload_tools()
     except Exception as e:
         raise HTTPException(502, f"tools reload failed: {e}")
-    return {"ok": True, "agents": _build_tools_inventory()["agents"]}
+    return {
+        "outcome": "succeeded",
+        "agents": _build_tools_inventory()["agents"],
+    }
 
 
 # ---- 实验配置 ----
@@ -230,7 +235,7 @@ async def update_mcp(body: UpdateMcpBody):
         await reload_tools()
     except Exception as e:
         raise HTTPException(502, f"tools reload failed: {e}")
-    return {"ok": True, "servers": get_mcp()["servers"]}
+    return {"outcome": "succeeded", "servers": get_mcp()["servers"]}
 
 
 class TestMcpBody(BaseModel):
@@ -246,7 +251,10 @@ async def test_mcp(body: TestMcpBody):
     # 冷启动 mcp server（如本文 arxiv）可能耗时数十秒，仅对未加载/新编辑做真实试连。
     live = sum(1 for t in get_base_tools() if t.name.startswith(f"{name}__"))
     if live > 0:
-        return {"name": name, "ok": True, "tool_count": live, "error": None, "reused": True}
+        return {
+            "name": name, "outcome": "succeeded",
+            "tool_count": live, "error": None, "reused": True,
+        }
     try:
         return await probe_server(name, timeout=60.0)
     except Exception as e:
@@ -284,7 +292,7 @@ async def update_skills(body: UpdateSkillsBody):
         await reload_tools()
     except Exception as e:
         raise HTTPException(502, f"tools reload failed: {e}")
-    return {"ok": True, "skills": (await _skills_payload())["skills"]}
+    return {"outcome": "succeeded", "skills": (await _skills_payload())["skills"]}
 
 
 async def _skills_payload():
@@ -315,3 +323,67 @@ async def get_limits_endpoint():
         "plan_step_max_steps": limits.plan_step_max_steps,
         "subagents": {name: s.max_steps for name, s in limits.subagents.items()},
     }
+
+
+# ---- Prompt 版本 / Canary ----
+
+def _prompt_payload() -> dict:
+    rules = canary_rules()
+    prompts = []
+    for prompt_id in prompt_ids():
+        specs = list_prompt_specs(prompt_id)
+        active = next((spec for spec in specs if spec.status == "active"), None)
+        prompts.append({
+            "id": prompt_id,
+            "active": (
+                {
+                    "version": active.version,
+                    "binding": active.binding,
+                    "evaluation_suite": active.evaluation_suite,
+                }
+                if active else None
+            ),
+            "versions": [
+                {
+                    "version": spec.version,
+                    "status": spec.status,
+                    "checksum": spec.checksum,
+                    "evaluation_suite": spec.evaluation_suite,
+                }
+                for spec in specs
+            ],
+            "canary": rules.get(prompt_id),
+        })
+    return {"prompts": prompts}
+
+
+@router.get("/prompts")
+async def get_prompts():
+    return _prompt_payload()
+
+
+class UpdatePromptCanaryBody(BaseModel):
+    canary: dict[str, dict] = {}
+
+
+@router.put("/prompts")
+async def update_prompts(body: UpdatePromptCanaryBody):
+    known = set(prompt_ids())
+    normalized: dict[str, dict] = {}
+    for prompt_id, rule in body.canary.items():
+        if prompt_id not in known:
+            raise HTTPException(400, f"unknown prompt id: {prompt_id}")
+        version = str((rule or {}).get("version") or "")
+        try:
+            percent = float((rule or {}).get("percent") or 0)
+        except (TypeError, ValueError):
+            raise HTTPException(400, f"invalid percent for {prompt_id}")
+        if not 0 <= percent <= 100:
+            raise HTTPException(400, f"percent must be in [0, 100]: {prompt_id}")
+        versions = {spec.version for spec in list_prompt_specs(prompt_id)}
+        if version and version not in versions:
+            raise HTTPException(400, f"unknown version for {prompt_id}: {version}")
+        if version:
+            normalized[prompt_id] = {"version": version, "percent": percent}
+    config_store.set_many("prompts", {"canary": normalized})
+    return {"outcome": "succeeded", **_prompt_payload()}

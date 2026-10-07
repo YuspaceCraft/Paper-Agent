@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'child_process'
+import crypto from 'crypto'
 import { EventEmitter } from 'events'
 import path from 'path'
 import http from 'http'
@@ -16,6 +17,7 @@ export class PythonBackend extends EventEmitter {
   private process: ChildProcess | null = null
   private status: 'stopped' | 'starting' | 'ready' | 'error' = 'stopped'
   private port = BACKEND_PORT
+  private readonly token = crypto.randomBytes(32).toString('hex')
 
   getPort(): number {
     return this.port
@@ -23,6 +25,10 @@ export class PythonBackend extends EventEmitter {
 
   getStatus(): string {
     return this.status
+  }
+
+  getToken(): string {
+    return this.token
   }
 
   private findPython(): string {
@@ -56,6 +62,7 @@ export class PythonBackend extends EventEmitter {
         // builtin agent tools (search_papers/fetch_content/…) call the local API
         // via AGENT_API_BASE; default is :8000 but we bind :8001 — point them here.
         AGENT_API_BASE: `http://127.0.0.1:${this.port}`,
+        DEMO_API_TOKEN: this.token,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     })

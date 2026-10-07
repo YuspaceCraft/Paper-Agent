@@ -8,7 +8,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from agent.resolution import canonicalize, match_local_state  # noqa: E402
+from agent.resolution import (  # noqa: E402
+    canonicalize,
+    extract_section_ref,
+    extract_section_refs,
+    match_local_state,
+)
 
 
 def _snapshot(*papers):
@@ -84,6 +89,12 @@ def test_absent_on_empty_snapshot_or_term():
     assert match_local_state("", [])["state"] == "absent"
 
 
+def test_extract_multiple_section_refs_in_text_order():
+    refs = extract_section_refs("给出第三章与第四章的原文内容")
+    assert [ref["ordinal"] for ref in refs] == [3, 4]
+    assert extract_section_ref("Chapter 3 and Chapter 4")["ordinal"] == 3
+
+
 def test_short_term_no_noisy_containment():
     # "cv" must NOT match "change captioning" via containment (≥4 chars guard)
     snapshot = _snapshot(_paper("Change Captioning Model", state="raw"))
@@ -108,6 +119,10 @@ def test_tooldef_contract():
     # readOnly 是 safety 权限门的前置条件：非 readOnly 会被当 destructive 直接 403
     assert td.annotations.get("readOnlyHint") is True
     assert td.annotations.get("idempotentHint") is True
+    fetch = by_name.get("fetch_content")
+    assert fetch is not None, "fetch_content ToolDef must exist"
+    props = fetch.parameters["properties"]
+    assert {"offset", "max_chars"} <= set(props)
 
 
 def test_check_paper_function_signature():

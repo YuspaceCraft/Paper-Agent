@@ -18,6 +18,7 @@ import redis as _redis_lib
 
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379")
 _TASK_TTL = 3600  # auto-expire completed tasks after 1 hour
+_FALLBACK_MAX = 500
 
 # ---- Redis connection (lazy, shared) ----
 
@@ -66,6 +67,29 @@ def _get_redis() -> "_redis_lib.Redis | None":
 _FALLBACK: dict[str, dict] = {}
 
 
+def _fallback_prune() -> None:
+    """Bound the no-Redis fallback and expire stale entries on every write."""
+    now = time.time()
+    stale = [
+        task_id for task_id, data in _FALLBACK.items()
+        if now - float(data.get("updated_at", data.get("created_at", 0)) or 0)
+        > _TASK_TTL
+    ]
+    for task_id in stale:
+        _FALLBACK.pop(task_id, None)
+    if len(_FALLBACK) <= _FALLBACK_MAX:
+        return
+    ordered = sorted(
+        _FALLBACK,
+        key=lambda task_id: float(
+            _FALLBACK[task_id].get("updated_at", 0) or 0
+        ),
+        reverse=True,
+    )
+    for task_id in ordered[_FALLBACK_MAX:]:
+        _FALLBACK.pop(task_id, None)
+
+
 def _task_create(task_id: str, **fields: str | None) -> None:
     """Create a new task entry."""
     now = str(time.time())
@@ -80,6 +104,7 @@ def _task_create(task_id: str, **fields: str | None) -> None:
         r.expire(key, _TASK_TTL)
         r.zadd("task:list", {task_id: time.time()})
     else:
+        _fallback_prune()
         _FALLBACK[task_id] = data
 
     publish_task_update(task_id)
@@ -94,7 +119,11 @@ def _task_update(task_id: str, **fields: str | None) -> None:
         mapping = {k: (v or "") for k, v in fields.items()}
         mapping["updated_at"] = now
         r.hset(key, mapping=mapping)
+        # Progress updates must keep long-running tasks alive; otherwise a
+        # parse/index job exceeding one hour disappears from the task stack.
+        r.expire(key, _TASK_TTL)
     elif task_id in _FALLBACK:
+        _fallback_prune()
         _FALLBACK[task_id].update({k: v or "" for k, v in fields.items()})
         _FALLBACK[task_id]["updated_at"] = now
 
@@ -118,6 +147,7 @@ def _task_get(task_id: str) -> dict | None:
                 data["result"] = None
             return data
         return None
+    _fallback_prune()
     data = _FALLBACK.get(task_id)
     if data and not data.get("result"):
         data["result"] = None
@@ -152,6 +182,7 @@ def _task_list(limit: int = 30) -> list[dict]:
             out.append(task)
         return out
     # In-memory fallback: newest first (single worker)
+    _fallback_prune()
     items = sorted(
         (d for d in _FALLBACK.values() if not d.get("parent")),
         key=lambda d: float(d.get("created_at", 0) or 0),
@@ -186,6 +217,12 @@ def _task_public(t: dict) -> dict:
         except (json.JSONDecodeError, TypeError):
             result = None
     out["result"] = result if result else None
+    if isinstance(result, dict):
+        out.setdefault("outcome", str(result.get("outcome") or ""))
+        error = result.get("error")
+        if isinstance(error, dict):
+            out.setdefault("error_code", str(error.get("code") or ""))
+            out.setdefault("retryable", bool(error.get("retryable")))
     return out
 
 
@@ -205,6 +242,21 @@ def set_task_loop(loop) -> None:
     _TASK_LOOP = loop
 
 
+def _put_task_event(q: asyncio.Queue, event: str) -> None:
+    """Drop the oldest event when a slow SSE client hits its bound."""
+    try:
+        q.put_nowait(event)
+    except asyncio.QueueFull:
+        try:
+            q.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
+        try:
+            q.put_nowait(event)
+        except asyncio.QueueFull:
+            pass
+
+
 def publish_task_update(task_id: str) -> None:
     """广播单个任务当前状态到所有活跃 SSE 客户端。
 
@@ -222,8 +274,10 @@ def publish_task_update(task_id: str) -> None:
     event = json.dumps(
         {"type": "task_update", "task": _task_public(task)}, ensure_ascii=False
     )
-    for q in list(_TASK_LISTENERS):
+    with _TASK_LISTEN_LOCK:
+        listeners = list(_TASK_LISTENERS)
+    for q in listeners:
         try:
-            loop.call_soon_threadsafe(q.put_nowait, event)
+            loop.call_soon_threadsafe(_put_task_event, q, event)
         except Exception:
             continue

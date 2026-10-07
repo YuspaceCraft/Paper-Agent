@@ -17,9 +17,9 @@ ingest_paper: 解析 PDF → 向量入库（独立的显式任务，仅当用户
 
 信封生成/解析统一收敛在 `agent/tool_contract.py`（P6）。本模块遵循：
 
-- **结构化数据** → JSON `{"ok": true/false, "data": {...}, ...}`
+- **结构化数据** → JSON `{"outcome": "succeeded|failed", "data": {...}}`
   - search_papers (论文列表/搜索结果)、download_paper、ingest_paper
-  - 错误响应：`{"ok": false, "error": "...", "next": "...", "error_type": "..."}`
+  - 错误响应：`{"outcome": "failed", "error": "...", "next": "...", "error_type": "..."}`
 
 - **内容型数据** → 纯文本 Markdown
   - fetch_content overview (标题/作者/摘要/章节列表)
@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import uuid
 from pathlib import Path
 
@@ -45,6 +46,7 @@ from agent.safety import tool_allowed
 from agent.providers.generic_provider import resolve_workspace_path
 from agent.resolution import match_local_state
 from agent.library_api import (
+    api_headers as _api_headers,
     api_is_down as _api_down,
     api_mark_down as _api_mark_down,
     api_timeout as _api_timeout,
@@ -75,14 +77,14 @@ def _clean_content(content: str) -> str:
 # 注意 `status` 为历史参数，从不进入信封，保留签名以兼容旧调用点。
 
 def _ok(data: dict | list) -> str:
-    from agent.tool_contract import ok as _ok_contract
-    return _ok_contract(data)
+    from agent.tool_contract import success
+    return success(data)
 
 
 def _err(status: int, detail: str, next_action: str,
          error_type: str = "unknown", **ctx) -> str:
-    from agent.tool_contract import err as _err_contract
-    return _err_contract(error_type, detail, next_action, **ctx)
+    from agent.tool_contract import failure
+    return failure(error_type, detail, next_action, **ctx)
 
 
 def _parse_detail(e: httpx.HTTPStatusError) -> str:
@@ -166,13 +168,16 @@ async def search_papers(query: str = "", top_k: int = 5) -> str:
     Examples:
     - search_papers()              → list all papers in library
     - search_papers("transformer") → semantic search for "transformer"
+    - search_papers("遥感")         → bilingual rewrite to remote-sensing queries
     - search_papers("loss", 10)    → search with more results
 
     Returns paper metadata (list mode) or matching chunks with scores (search mode).
     """
     if _api_down(API):
         return _backend_down_err()
-    async with httpx.AsyncClient(timeout=_api_timeout(15.0)) as c:
+    async with httpx.AsyncClient(
+        timeout=_api_timeout(15.0), headers=_api_headers(),
+    ) as c:
         if not query.strip():
             try:
                 r = await c.get(f"{API}/api/reader/papers")
@@ -189,7 +194,9 @@ async def search_papers(query: str = "", top_k: int = 5) -> str:
             papers = data.get("papers", [])
             if not papers:
                 return json.dumps({
-                    "ok": True, "data": {"papers": [], "count": 0},
+                    "schema_version": "1.0",
+                    "outcome": "succeeded",
+                    "data": {"papers": [], "count": 0},
                     "hint": "No papers indexed. Upload PDFs via the web UI first.",
                 }, ensure_ascii=False, indent=2)
 
@@ -220,19 +227,25 @@ async def search_papers(query: str = "", top_k: int = 5) -> str:
         results = data.get("results", [])
         if not results:
             return json.dumps({
-                "ok": True, "data": {"results": [], "total": 0},
+                "schema_version": "1.0",
+                "outcome": "succeeded",
+                "data": {"results": [], "total": 0},
                 "hint": "No matches. Broaden query or use search_papers() to list all papers.",
             }, ensure_ascii=False, indent=2)
 
         trimmed = []
+        paper_names: list[str] = []
         for h in results:
             text = _clean_content((h.get("generation_text", "") or "")[:800])
             chunk_id = h.get("chunk_id", "")
-            paper = (h.get("section_path", "") or "").split(" > ")[0]
+            metadata = h.get("metadata") or {}
+            paper = metadata.get("paper_name", "")
             # Fallback: extract paper name from chunk_id
             # (format: {paper_name}__chunk_{number})
             if not paper and "__chunk_" in chunk_id:
                 paper = chunk_id.rsplit("__chunk_", 1)[0]
+            if paper and paper not in paper_names:
+                paper_names.append(paper)
             trimmed.append({
                 "chunk_id": chunk_id,
                 "paper": paper,
@@ -240,17 +253,29 @@ async def search_papers(query: str = "", top_k: int = 5) -> str:
                 "text": text,
                 "score": h.get("score", 0),
             })
-        return _ok({"results": trimmed, "total": len(trimmed)})
+        return _ok({
+            "results": trimmed,
+            "papers": paper_names,
+            "total": len(trimmed),
+        })
 
 
 @tool
-async def fetch_content(paper_name: str, section: str = "") -> str:
+async def fetch_content(
+    paper_name: str,
+    section: str = "",
+    offset: int = 0,
+    max_chars: int = 6000,
+) -> str:
     """Read paper content. Use search_papers() FIRST to discover the paper name.
 
     Two modes:
     - section="" (default): returns paper metadata — title, authors, abstract,
       AND full section list with chunk counts (OVERVIEW)
-    - section="Methodology": returns full body text of that section (DEEP READ)
+    - section="Methodology": returns paged body text of that section (DEEP READ)
+
+    The provider returns the complete logical result. Runtime projection may
+    expose it as pages with continuation metadata for large sections.
 
     PRECONDITION: paper_name MUST come from a search_papers() result, not from
     user input directly. Verify the paper exists before calling.
@@ -261,7 +286,9 @@ async def fetch_content(paper_name: str, section: str = "") -> str:
     """
     if _api_down(API):
         return _backend_down_err()
-    async with httpx.AsyncClient(timeout=_api_timeout()) as c:
+    async with httpx.AsyncClient(
+        timeout=_api_timeout(), headers=_api_headers(),
+    ) as c:
         if not section:
             try:
                 r = await c.get(f"{API}/api/reader/{paper_name}/abstract")
@@ -425,6 +452,7 @@ async def download_paper(
         filename: Optional file stem WITHOUT extension. Defaults to a short
             name derived from the arXiv title.
     """
+    total_start = time.monotonic()
     # Strip version suffix (e.g. "2301.07093v2" → "2301.07093"). arXiv's PDF
     # endpoint serves the latest version only at the canonical ID — the vN form
     # 404s.
@@ -441,8 +469,14 @@ async def download_paper(
 
     # arXiv 身份核验（必做）：拿到 ID 对应的真实标题后才能下载。
     # 防「编造/张冠李戴的 arXiv ID → 下载到与所述论文不符的 PDF」。核验失败绝不盲下载。
+    metadata_start = time.monotonic()
     title = await _fetch_arxiv_title(canonical_id)
+    metadata_ms = round((time.monotonic() - metadata_start) * 1000, 1)
     if not title:
+        timings = {
+            "metadata_ms": metadata_ms,
+            "total_ms": round((time.monotonic() - total_start) * 1000, 1),
+        }
         return _err(
             422,
             f"无法验证 arXiv ID {canonical_id}（export.arxiv.org 查询失败或该 ID 无效），"
@@ -450,6 +484,7 @@ async def download_paper(
             "先用 arxiv 子代理确认正确的 arXiv ID；若本地已有该论文的 PDF，"
             "告知我本地路径即可直接 ingest_paper。",
             error_type="unverified",
+            timings_ms=timings,
         )
 
     # Actual file stem: explicit filename > title-derived short name > arxiv_id.
@@ -463,13 +498,22 @@ async def download_paper(
         rel_path = str(out_path)
 
     if out_path.exists():
+        total_ms = round((time.monotonic() - total_start) * 1000, 1)
         return json.dumps({
-            "ok": True, "data": {
+            "schema_version": "1.0",
+            "outcome": "succeeded",
+            "data": {
                 "paper_name": stem, "arxiv_id": canonical_id,
                 "title": title,
                 "filename": f"{stem}.pdf",
                 "path": str(out_path), "relative_path": rel_path,
                 "size_bytes": out_path.stat().st_size, "status": "raw",
+                "timings_ms": {
+                    "metadata_ms": metadata_ms,
+                    "download_ms": 0,
+                    "write_ms": 0,
+                    "total_ms": total_ms,
+                },
                 "message": (
                     f"PDF already exists at {rel_path} ({out_path.stat().st_size} bytes). "
                     "Downloaded file only — NOT parsed or indexed. "
@@ -479,22 +523,45 @@ async def download_paper(
         }, ensure_ascii=False, indent=2)
 
     try:
+        download_start = time.monotonic()
         async with httpx.AsyncClient(follow_redirects=True, timeout=120.0) as client:
             resp = await client.get(pdf_url)
+            download_ms = round((time.monotonic() - download_start) * 1000, 1)
             if resp.status_code == 404:
                 return _err(404,
                     f"arXiv paper '{canonical_id}' not found. Verify the ID with arxiv__get_paper_data.",
                     "Check the arxiv_id and retry.", error_type="param_error")
             resp.raise_for_status()
 
+        write_start = time.monotonic()
         out_path.write_bytes(resp.content)
+        write_ms = round((time.monotonic() - write_start) * 1000, 1)
+        total_ms = round((time.monotonic() - total_start) * 1000, 1)
+        timings = {
+            "metadata_ms": metadata_ms,
+            "download_ms": download_ms,
+            "write_ms": write_ms,
+            "total_ms": total_ms,
+        }
+        try:
+            from agent.observability import log_event
+
+            log_event(
+                "tool_phase_timing", node="download_paper",
+                tool="download_paper", **timings,
+            )
+        except Exception:  # noqa: BLE001 — timing must not affect the result
+            pass
         return json.dumps({
-            "ok": True, "data": {
+            "schema_version": "1.0",
+            "outcome": "succeeded",
+            "data": {
                 "paper_name": stem, "arxiv_id": canonical_id,
                 "title": title,
                 "filename": f"{stem}.pdf",
                 "path": str(out_path), "relative_path": rel_path,
                 "size_bytes": len(resp.content), "status": "raw",
+                "timings_ms": timings,
                 "message": (
                     f"PDF downloaded to {rel_path} ({len(resp.content)} bytes). "
                     "Downloaded file only — NOT parsed or indexed. "
@@ -533,7 +600,9 @@ async def ingest_paper(paper_name: str, pdf_path: str = "") -> str:
     """
     if _api_down(API):
         return _backend_down_err()
-    async with httpx.AsyncClient(timeout=_api_timeout(15.0)) as client:
+    async with httpx.AsyncClient(
+        timeout=_api_timeout(15.0), headers=_api_headers(),
+    ) as client:
         try:
             r = await client.post(
                 f"{API}/api/agent/ingest",
@@ -549,7 +618,9 @@ async def ingest_paper(paper_name: str, pdf_path: str = "") -> str:
 
     data = r.json()
     return json.dumps({
-        "ok": True, "data": {
+        "schema_version": "1.0",
+        "outcome": "succeeded",
+        "data": {
             "task_id": data["task_id"],
             "paper_name": data["paper_name"],
             "status": "running",
@@ -575,7 +646,9 @@ async def check_task_status(task_id: str) -> str:
     """
     if _api_down(API):
         return _backend_down_err()
-    async with httpx.AsyncClient(timeout=_api_timeout()) as client:
+    async with httpx.AsyncClient(
+        timeout=_api_timeout(), headers=_api_headers(),
+    ) as client:
         try:
             r = await client.get(f"{API}/api/agent/tasks/{task_id}")
             r.raise_for_status()
@@ -592,7 +665,8 @@ async def check_task_status(task_id: str) -> str:
             return _backend_down_err()
 
     return json.dumps({
-        "ok": True,
+        "schema_version": "1.0",
+        "outcome": "succeeded",
         "data": {
             "task_id": data.get("task_id", task_id),
             "paper_name": data.get("paper_name", ""),
@@ -627,7 +701,9 @@ async def check_paper(term: str = "") -> str:
     """
     if _api_down(API):
         return _backend_down_err()
-    async with httpx.AsyncClient(timeout=_api_timeout()) as c:
+    async with httpx.AsyncClient(
+        timeout=_api_timeout(), headers=_api_headers(),
+    ) as c:
         try:
             r = await c.get(f"{API}/api/reader/local-papers")
             r.raise_for_status()
@@ -667,8 +743,10 @@ BUILTIN_TOOLDEFS = [
         description=(
             "Search papers in the LOCAL library by topic/keyword; empty query lists all papers. "
             "PRIMARY entry point — start here to discover available papers. "
+            "Chinese terms and common acronyms are rewritten automatically. "
             "Args: query ('' = list all), top_k (max results in search mode). "
-            "Returns JSON {\"ok\":true,\"data\":{papers|results}}; failure returns an error envelope."
+            "Returns JSON {\"ok\":true,\"data\":{papers|results}}; search results also "
+            "include a distinct paper-name list. Failure returns an error envelope."
         ),
         parameters={
             "type": "object",
@@ -692,9 +770,10 @@ BUILTIN_TOOLDEFS = [
         name="fetch_content",
         description=(
             "Read content of a paper in the LOCAL library. Empty section = overview "
-            "(title/authors/abstract + section list); section name = full body text. "
+            "(title/authors/abstract + section list); section name = paged body text. "
             "PRECONDITION: paper_name must come from a prior search_papers() result. "
-            "Returns Markdown; errors as JSON envelope."
+            "Returns Markdown with continuation offsets for large sections; errors "
+            "as JSON envelope."
         ),
         parameters={
             "type": "object",
@@ -707,6 +786,22 @@ BUILTIN_TOOLDEFS = [
                     "type": "string",
                     "description": "Section heading. Empty = overview mode.",
                     "default": "",
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": (
+                        "Character offset for continuation pages. Use the "
+                        "offset returned by the previous response."
+                    ),
+                    "default": 0,
+                },
+                "max_chars": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum characters to return in this page "
+                        "(500-7000, default 6000)."
+                    ),
+                    "default": 6000,
                 },
             },
             "required": ["paper_name"],

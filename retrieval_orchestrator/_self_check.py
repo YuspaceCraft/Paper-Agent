@@ -38,6 +38,14 @@ def _test_evaluator():
     assert _mrr(hits3, gt) == 0.0
     assert _hit_rate(hits3, gt, 3) == 0.0
 
+    # Duplicate chunks from repeated retrieval rounds must not inflate metrics.
+    duplicate_hits = ["c1", "c1", "c2", "c2", "c3"]
+    assert _recall(duplicate_hits, gt, 5) == 1.0
+    assert _precision(duplicate_hits, gt, 5) == 3 / 5
+    assert _ndcg(duplicate_hits, gt, 5) == 1.0
+    assert _recall(["c1", "c1"], ["c1"], 5) == 1.0
+    assert _ndcg(["c1", "c1"], ["c1"], 5) == 1.0
+
     print("  [OK] evaluator metrics correct")
 
 

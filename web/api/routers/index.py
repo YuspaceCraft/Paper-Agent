@@ -168,12 +168,24 @@ async def search(req: SearchRequest):
 
     from indexer.config import load_config
     from indexer.embedding_adapters import create_embedding_adapter
+    from retrieval import fuse_query_variants, rewrite_query
 
     cfg = load_config()
     adapter = create_embedding_adapter(cfg.embedding)
-    query_vector = adapter.embed_single(req.query)
-
-    docs = store.search(query_vector, filters=req.filters, top_k=req.top_k)
+    variants = list(rewrite_query(req.query).variants) or [req.query]
+    result_lists = []
+    for variant in variants:
+        query_vector = adapter.embed_single(variant)
+        if query_vector is None:
+            continue
+        result_lists.append(
+            store.search(
+                query_vector,
+                filters=req.filters,
+                top_k=max(req.top_k, 50),
+            )
+        )
+    docs = fuse_query_variants(result_lists, top_k=req.top_k)
 
     results = [
         SearchResult(

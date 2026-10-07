@@ -38,6 +38,7 @@ function createWindow() {
 
 function setupIPC() {
   ipcMain.handle('get-backend-port', () => backend?.getPort() ?? null)
+  ipcMain.handle('get-backend-token', () => backend?.getToken() ?? null)
   ipcMain.handle('get-backend-status', () => backend?.getStatus() ?? 'stopped')
   ipcMain.handle('shell:open-path', async (_e, path?: string) => {
     // 配置中心「Skills → 打开目录」：在系统文件管理器中显示该目录。
@@ -73,7 +74,11 @@ function startBackend() {
   backend = new PythonBackend()
   backend.on('ready', (port: number) => {
     console.log(`[backend] ready on ${port}`)
-    mainWindow?.webContents.send('backend-status', { status: 'ready', port })
+    mainWindow?.webContents.send('backend-status', {
+      status: 'ready',
+      port,
+      token: backend?.getToken(),
+    })
   })
   backend.on('log', (line: string) => {
     console.log(`[backend] ${line}`)

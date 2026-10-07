@@ -20,7 +20,7 @@ evaluation:
   k_values: [5, 10, 20]
 
   # ---- 评估数据集清单 (复用，不每次重新生成) ---------------
-  manifest: "./eval_output/datasets/manifest_v1_115qa.jsonl"
+  manifest: "./eval_output/datasets/manifest_v2_current_kb_50qa.jsonl"
 
   # ---- 评估数据集生成 (仅在需要重建时使用) -------------------
   dataset:

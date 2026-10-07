@@ -19,27 +19,8 @@ import json
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from .nodes import _get_model, _stream_llm
-
-_NOTIFY_SYSTEM = """\
-You are a background-task notifier for a research assistant. A job the user asked for just ended; write the completion notice to the user.
-
-Task facts (report ONLY these facts, never invent extra):
-- name: {paper_name}
-- type: {kind}
-- status: {status}
-- progress: {progress}
-- error: {error}
-- result: {result}
-
-Rules:
-- status "done" → confirm completion with the concrete outcome from `result` (e.g. "已入库，可以在知识库中检索到。").
-- status "failed" → state the failure and the reason from `error`; suggest retrying when it looks transient.
-- any other status → reassure briefly; do NOT claim completion.
-- Do NOT fabricate actions or outcomes not present in the facts.
-- Output ONLY 1-2 sentences, plain text. No markdown, no bullet lists, no code, no tool names.
-- Match the language of the user's messages: Chinese → Chinese; English → English.
-
-Output ONLY the message."""
+from .prompts import NOTIFY_SYSTEM
+from .prompt_store import get_prompt
 
 
 async def stream_task_notify(task: dict) -> str:
@@ -53,7 +34,7 @@ async def stream_task_notify(task: dict) -> str:
     elif result is None:
         result = ""
 
-    prompt = _NOTIFY_SYSTEM.format(
+    prompt = get_prompt("NOTIFY_SYSTEM", NOTIFY_SYSTEM).format(
         paper_name=task.get("paper_name") or task.get("task_id") or "任务",
         kind=task.get("kind") or "通用",
         status=task.get("status") or "pending",
@@ -62,7 +43,7 @@ async def stream_task_notify(task: dict) -> str:
         result=str(result),
     )
 
-    model = _get_model({"configurable": {}})
+    model = _get_model({"configurable": {}}, task="notifier")
     msg = await _stream_llm(model, [
         SystemMessage(content=prompt),
         HumanMessage(content="Notify the user now."),

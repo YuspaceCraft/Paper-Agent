@@ -8,9 +8,8 @@
 import { type FC, useCallback, useRef } from 'react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
-import { streamChat } from '../api';
-import type { AgentMode, Message, PlanStep, PlanVerdictData, ToolStep, WorkNote } from '../state';
-import { saveMessages } from '../state';
+import { api, streamChat, type AgentApproval } from '../api';
+import type { AgentMode, ApprovalRequest, CompletionReportData, Message, PlanStep, PlanVerdictData, ToolStep, WorkNote } from '../state';
 
 interface Props {
   threadId: string;
@@ -20,6 +19,7 @@ interface Props {
   onModeChange: (m: AgentMode) => void;
   onAddMessage: (msg: Message) => void;
   onAppendToken: (msgId: string, token: string) => void;
+  onReplaceMessageContent: (msgId: string, content: string) => void;
   onFinishMessage: (msgId: string) => void;
   onAbortMessage: (msgId: string) => void;
   onToolStart: (msgId: string, step: ToolStep) => void;
@@ -28,10 +28,13 @@ interface Props {
   onPlanStep: (msgId: string, stepId: string, patch: Partial<PlanStep>) => void;
   onPlanProgress: (msgId: string, done: number, total: number) => void;
   onPlanVerify: (msgId: string, verdict: PlanVerdictData) => void;
+  onTaskStatus: (msgId: string, report: CompletionReportData) => void;
   onMode: (msgId: string, mode: 'react' | 'plan') => void;
   onSetStreaming: (v: boolean) => void;
   /** 对话中心化：写作/实验内联状态片（doc_section / experiment SSE）。 */
   onWorkNote: (msgId: string, note: WorkNote) => void;
+  /** Graph interrupt: show/clear the pending tool-approval card. */
+  onApproval: (msgId: string, approval: ApprovalRequest | null) => void;
   /** 对话中心化：SSE 事件 → 对话绑定（doc_id / project），供右侧工作台跟随。 */
   onThreadBinding: (threadId: string, binding: { docId?: string; project?: string }) => void;
   /** 上传 PDF（输入框内上传图标触发）。 */
@@ -49,8 +52,9 @@ const containerStyle: React.CSSProperties = {
 export const ChatView: FC<Props> = ({
   threadId, messages, isStreaming, mode, onModeChange,
   onAddMessage, onAppendToken, onFinishMessage, onAbortMessage, onToolStart, onToolEnd,
-  onPlan, onPlanStep, onPlanProgress, onPlanVerify, onMode, onSetStreaming,
-  onWorkNote, onThreadBinding, onUpload,
+  onReplaceMessageContent,
+  onPlan, onPlanStep, onPlanProgress, onPlanVerify, onTaskStatus, onMode, onSetStreaming,
+  onWorkNote, onApproval, onThreadBinding, onUpload,
 }) => {
   const abortRef = useRef<AbortController | null>(null);
 
@@ -81,7 +85,7 @@ export const ChatView: FC<Props> = ({
       },
       onToolEnd(id, status, result, executionTime, name) {
         onToolEnd(sysId, id, {
-          status: status === 'error' ? 'error' : 'success',
+          status: status as ToolStep['status'],
           result,
           executionTime,
         }, name, threadId);
@@ -100,6 +104,12 @@ export const ChatView: FC<Props> = ({
       },
       onPlanVerify(v) {
         onPlanVerify(sysId, v as PlanVerdictData);
+      },
+      onTaskStatus(report) {
+        onTaskStatus(sysId, report);
+      },
+      onApprovalRequired(approval: AgentApproval) {
+        onApproval(sysId, approval);
       },
       onDocSection(docId, payload) {
         onWorkNote(sysId, {
@@ -124,16 +134,39 @@ export const ChatView: FC<Props> = ({
       onToken(content) {
         onAppendToken(sysId, content);
       },
+      onReplaceAnswer(content) {
+        onReplaceMessageContent(sysId, content);
+      },
       onDone() {
         onFinishMessage(sysId);
-        saveMessages(threadId, messages);
       },
       onError(message) {
         onAppendToken(sysId, `\n\n⚠️ 错误: ${message}`);
         onAbortMessage(sysId);
       },
     });
-  }, [threadId, mode, messages, onAddMessage, onAppendToken, onFinishMessage, onAbortMessage, onToolStart, onToolEnd, onPlan, onPlanStep, onPlanProgress, onPlanVerify, onMode, onSetStreaming, onWorkNote, onThreadBinding]);
+  }, [threadId, mode, onAddMessage, onAppendToken, onReplaceMessageContent, onFinishMessage, onAbortMessage, onToolStart, onToolEnd, onPlan, onPlanStep, onPlanProgress, onPlanVerify, onTaskStatus, onMode, onSetStreaming, onWorkNote, onApproval, onThreadBinding]);
+
+  const handleApprovalDecision = useCallback(async (msgId: string, approved: boolean) => {
+    onSetStreaming(true);
+    onApproval(msgId, null);
+    try {
+      const result = await api.resumeAgent(threadId, approved, mode);
+      if (result.task_status) onTaskStatus(msgId, result.task_status);
+      if (result.approval) {
+        onApproval(msgId, result.approval);
+      } else {
+        if (result.answer) onAppendToken(msgId, result.answer);
+        onFinishMessage(msgId);
+      }
+    } catch (error) {
+      onApproval(msgId, null);
+      onAppendToken(msgId, `\n\n⚠️ 审批续跑失败: ${String(error)}`);
+      onAbortMessage(msgId);
+    } finally {
+      onSetStreaming(false);
+    }
+  }, [threadId, mode, onAppendToken, onFinishMessage, onAbortMessage, onApproval, onSetStreaming, onTaskStatus]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -145,7 +178,11 @@ export const ChatView: FC<Props> = ({
 
   return (
     <div style={containerStyle}>
-      <MessageList messages={messages} onSuggestion={handleSend} />
+      <MessageList
+        messages={messages}
+        onSuggestion={handleSend}
+        onApprovalDecision={handleApprovalDecision}
+      />
       <ChatInput isStreaming={isStreaming} mode={mode} onModeChange={onModeChange} onSend={handleSend} onStop={handleStop} onUpload={onUpload} />
     </div>
   );

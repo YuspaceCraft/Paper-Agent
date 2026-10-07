@@ -20,12 +20,24 @@ def test_permission_gate_blocks_destructive():
         bp = BuiltinProvider()
         # destructive tool rejected for user role — returns before network
         r = await bp.call_tool("ingest_paper", {"paper_name": "whatever"})
-        assert '"ok": false' in r, r
+        assert '"outcome": "failed"' in r, r
         assert '"permission_denied"' in r, r
 
     asyncio.run(_run())
 
 
+def test_secret_values_are_masked_from_final_output():
+    from agent.safety import sanitize_output
+
+    text = "key sk-abcdefghijklmnopqrstuvwxyz123456 token=supersecrettokenvalue"
+    masked = sanitize_output(text)
+
+    assert "sk-abcdefghijklmnopqrstuvwxyz123456" not in masked
+    assert "supersecrettokenvalue" not in masked
+    assert "[密钥]" in masked
+
+
 if __name__ == "__main__":
     test_permission_gate_blocks_destructive()
+    test_secret_values_are_masked_from_final_output()
     print("Phase 2 permission-gate integration OK")

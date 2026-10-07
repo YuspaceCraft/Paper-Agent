@@ -18,7 +18,10 @@ import os
 
 import httpx
 
+from .observability import log_event, timed
+
 from .library_api import (
+    api_headers as _api_headers,
     api_is_down as _api_down,
     api_mark_down as _api_mark_down,
     api_timeout as _api_timeout,
@@ -147,7 +150,9 @@ async def fetch_papers(force: bool = False) -> list[dict]:
     if _api_down(API):
         return _papers_cache if _papers_cache is not None else []
     try:
-        async with httpx.AsyncClient(timeout=_api_timeout()) as c:
+        async with httpx.AsyncClient(
+            timeout=_api_timeout(), headers=_api_headers(),
+        ) as c:
             r = await c.get(f"{API}/api/reader/papers")
             r.raise_for_status()
             _papers_cache = r.json().get("papers", [])
@@ -224,66 +229,89 @@ _EN_ORDINAL: dict[str, int] = {
 }
 
 
-def extract_section_ref(query: str) -> dict | None:
-    """Extract section/chapter ordinal from a user query.
+def extract_section_refs(query: str) -> list[dict]:
+    """Extract all section/chapter ordinals from a user query in text order.
 
-    Returns {"ordinal": int, "text": str, "confidence": float} or None.
     Handles Chinese (第三章, 第三章节) and English (section 3, third chapter).
+    Multiple references such as "第三章与第四章" remain separate entries.
     """
-    # Chinese: 第N章, 第N节, 第三章, 第三个章节, etc.
-    m = re.search(r'第\s*(\d+|[一二三四五六七八九十]+)\s*个?\s*(章|节|章节)', query)
-    if m:
+    refs: list[tuple[int, dict]] = []
+
+    for m in re.finditer(
+        r'第\s*(\d+|[一二三四五六七八九十]+)\s*个?\s*(章|节|章节)',
+        query,
+    ):
         cn = m.group(1)
         ordinal = _CN_NUMERAL.get(cn) or (int(cn) if cn.isdigit() else None)
         if ordinal is not None:
-            return {"ordinal": ordinal, "text": m.group(0), "confidence": 0.9,
-                    "source": "chinese_ordinal"}
+            refs.append((m.start(), {
+                "ordinal": ordinal, "text": m.group(0), "confidence": 0.9,
+                "source": "chinese_ordinal",
+            }))
 
-    # English: "section 3", "chapter IV", "third section"
-    m = re.search(
+    roman_map = {
+        'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5,
+        'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10,
+    }
+    for m in re.finditer(
         r'(section|chapter|part)\s+(\d+|[IVX]+)\b',
         query, re.IGNORECASE,
-    )
-    if m:
+    ):
         num_str = m.group(2).upper()
-        if num_str.isdigit():
-            return {"ordinal": int(num_str), "text": m.group(0), "confidence": 0.9,
-                    "source": "english_ordinal"}
-        # Roman numeral
-        roman_map = {'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5,
-                     'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10}
-        if num_str in roman_map:
-            return {"ordinal": roman_map[num_str], "text": m.group(0), "confidence": 0.85,
-                    "source": "roman_numeral"}
+        ordinal = int(num_str) if num_str.isdigit() else roman_map.get(num_str)
+        if ordinal is not None:
+            refs.append((m.start(), {
+                "ordinal": ordinal, "text": m.group(0), "confidence": 0.9,
+                "source": (
+                    "english_ordinal" if num_str.isdigit() else "roman_numeral"
+                ),
+            }))
 
-    # English ordinal word: "third chapter", "second section"
-    m = re.search(
+    for m in re.finditer(
         r'(' + '|'.join(_EN_ORDINAL) + r')\s+(section|chapter|part)',
         query, re.IGNORECASE,
-    )
-    if m:
+    ):
         ordinal = _EN_ORDINAL.get(m.group(1).lower())
         if ordinal is not None:
-            return {"ordinal": ordinal, "text": m.group(0), "confidence": 0.85,
-                    "source": "english_word"}
+            refs.append((m.start(), {
+                "ordinal": ordinal, "text": m.group(0), "confidence": 0.85,
+                "source": "english_word",
+            }))
 
-    # Bare ordinal word at end of query: "the third"
     m = re.search(r'\b(' + '|'.join(_EN_ORDINAL) + r')\s*$', query, re.IGNORECASE)
     if m:
         ordinal = _EN_ORDINAL.get(m.group(1).lower())
         if ordinal is not None:
-            return {"ordinal": ordinal, "text": m.group(0), "confidence": 0.7,
-                    "source": "bare_ordinal"}
+            refs.append((m.start(), {
+                "ordinal": ordinal, "text": m.group(0), "confidence": 0.7,
+                "source": "bare_ordinal",
+            }))
 
-    return None
+    refs.sort(key=lambda item: item[0])
+    out: list[dict] = []
+    seen: set[tuple[int, int]] = set()
+    for start, ref in refs:
+        key = (start, int(ref["ordinal"]))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(ref)
+    return out
+
+
+def extract_section_ref(query: str) -> dict | None:
+    """Backward-compatible first section reference."""
+    refs = extract_section_refs(query)
+    return refs[0] if refs else None
 
 
 # ---- resolve_node (LangGraph node function) ----
 
+@timed("resolve")
 async def resolve_node(state: dict, _config=None) -> dict:
     """Resolve fuzzy references against the paper library.
 
-    Reads: state["focus_papers"], state["entities"], last user message.
+    Reads: state["focus_papers"], state["entities"], recent human messages.
     Writes: state["resolved"] with matched papers + optional section ref.
 
     Entity bag is a resolution candidate too: understand reliably reports paper
@@ -302,10 +330,7 @@ async def resolve_node(state: dict, _config=None) -> dict:
         if isinstance(e, str) and e.strip() and e.strip() not in candidates:
             candidates.append(e.strip())
 
-    if not candidates:
-        return {"resolved": {"papers": [], "section": None}}
-
-    papers = await fetch_papers()
+    papers = await fetch_papers() if candidates else []
 
     # De-dupe by the matched library name; candidate order preserved.
     resolved_papers: list[dict] = []
@@ -317,16 +342,47 @@ async def resolve_node(state: dict, _config=None) -> dict:
         seen.add(m["match"])
         resolved_papers.append(m)
 
-    # Extract section reference from the last human message
+    # Extract section reference + build a standalone retrieval query.  The
+    # latter lets the agent use resolved context instead of forwarding pronouns
+    # such as "它/它们/these papers" directly into search_papers().
     section = None
     msgs = state.get("messages", [])
-    if msgs:
-        last = msgs[-1]
-        content = last.content if hasattr(last, "content") else str(last)
-        section = extract_section_ref(content)
+    human_texts: list[str] = []
+    for message in msgs:
+        if getattr(message, "type", "") != "human":
+            continue
+        text = message.content if hasattr(message, "content") else str(message)
+        if str(text).strip():
+            human_texts.append(str(text).strip())
+
+    current_query = human_texts[-1] if human_texts else ""
+    prior_context = "\n".join(human_texts[:-1][-3:])
+    if state.get("context_snapshot"):
+        prior_context = f"{state['context_snapshot']}\n{prior_context}".strip()
+
+    search_query = ""
+    if current_query:
+        from retrieval.query_rewrite import build_search_query
+        search_query = build_search_query(
+            current_query,
+            context=prior_context,
+            anchors=[p.get("match", "") for p in resolved_papers],
+        )
+
+    sections = extract_section_refs(current_query) if msgs else []
+    section = sections[0] if sections else None
 
     resolved = {
         "papers": resolved_papers,
         "section": section,
+        "sections": sections,
+        "search_query": search_query,
     }
+    log_event(
+        "node_resources",
+        node="resolve",
+        candidates=candidates,
+        resolved=resolved,
+        context_preview=prior_context[-3000:],
+    )
     return {"resolved": resolved}

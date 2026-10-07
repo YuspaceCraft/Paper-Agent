@@ -13,6 +13,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
@@ -35,10 +37,29 @@ def R(coro):
     return _loop.run_until_complete(coro)
 
 
+def test_extract_output_ignores_previous_turn_and_placeholder():
+    assert sv._extract_output({
+        "messages": [
+            AIMessage(content="old answer"),
+            HumanMessage(content="new task"),
+            AIMessage(content=""),
+        ],
+    }) == ""
+    assert sv._extract_output({
+        "messages": [AIMessage(content="No answer produced.")],
+    }) == ""
+
+
 # ---- 隔离的临时环境（store db / 假 graph 工件） ----
 
 _TMP = tempfile.mkdtemp(prefix="sv_test_")
 TASK_DB = str(Path(_TMP) / "task_store.db")
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _cleanup_supervisor():
+    yield
+    _teardown()
 
 
 async def _no_graph(meta):
@@ -180,6 +201,121 @@ def test_interrupt_resume():
         R(conn.close())
 
 
+def test_resume_is_single_flight():
+    """Concurrent leader replies must not start two workers on one thread."""
+    _setup()
+    db = Path(_TMP) / "gate_single_flight.db"
+    saver, conn = R(_make_saver(db))
+    calls = {"agent": 0}
+    try:
+        def agent_node(state, config):
+            calls["agent"] += 1
+            has_resp = any(
+                getattr(m, "type", "") == "tool" for m in state["messages"]
+            )
+            if has_resp:
+                return {"messages": [AIMessage(content="done")]}
+            return {"messages": [AIMessage(content="", tool_calls=[
+                {"name": "request_review",
+                 "args": {"question": "continue?"}, "id": "g1"}])]}
+
+        sg = StateGraph(AgentState)
+        sg.add_node("agent", agent_node)
+        sg.add_node("tools", build_tools_node([request_review]))
+        sg.add_node("gate", _gate_node)
+        sg.set_entry_point("agent")
+        sg.add_conditional_edges(
+            "agent", after_agent,
+            {"tools": "tools", "synthesize": END, "end": END, "gate": "gate"},
+        )
+        sg.add_edge("tools", "agent")
+        sg.add_edge("gate", "agent")
+        graph = sg.compile(checkpointer=saver)
+        sv._worker_graph = lambda role, gate: (graph, {
+            "subagent_system": "t", "bound_tools": ["request_review"],
+            "max_steps": 3,
+        })
+
+        task_id = R(sv.dispatch("creator", "single flight", "confirm"))
+        R(wait_status(task_id, "interrupted"))
+        first, second = R(asyncio.gather(
+            sv.resume(task_id, "yes"),
+            sv.resume(task_id, "yes"),
+        ))
+        R(wait_status(task_id, "done"))
+        assert first is True and second is False
+        assert calls["agent"] == 2, calls
+    finally:
+        R(conn.close())
+
+
+def test_resume_rebuilds_graph_after_process_restart():
+    _setup()
+    db = Path(_TMP) / "gate_rebuild.db"
+    saver, conn = R(_make_saver(db))
+    try:
+        graph = _gate_graph(saver)
+        sv._worker_graph = lambda role, gate: (graph, {
+            "subagent_system": "t", "bound_tools": ["request_review"],
+            "max_steps": 3,
+        })
+        task_id = R(sv.dispatch("creator", "rebuild", "confirm"))
+        R(wait_status(task_id, "interrupted"))
+
+        # Simulate a process restart: only persisted metadata/checkpoint survives.
+        sv._graphs.clear()
+
+        async def rebuild(_meta):
+            return graph
+
+        sv._graph_for_meta = rebuild
+        assert R(sv.resume(task_id, "continue")) is True
+        assert R(wait_status(task_id, "done"))["status"] == "done"
+        assert R(sv.collect(task_id)) == "final-after-resume"
+    finally:
+        R(conn.close())
+
+
+def test_expired_lease_is_orphaned_and_recoverable():
+    _setup()
+
+    class RecoverGraph:
+        async def ainvoke(self, run_input, config):
+            assert run_input is None
+            return {"messages": [AIMessage(content="recovered")]}
+
+        async def aget_state(self, config):
+            from types import SimpleNamespace
+
+            return SimpleNamespace(tasks=[], values={})
+
+    graph = RecoverGraph()
+    sv._worker_graph = lambda role, gate: (graph, {
+        "subagent_system": "t", "bound_tools": [], "max_steps": 3,
+    })
+
+    async def rebuild(_meta):
+        return graph
+
+    sv._graph_for_meta = rebuild
+    task_id = "deadbeef01"
+    R(sv._meta_put(
+        task_id, role="creator", title="orphan", status="running",
+        created_at="2026-01-01T00:00:00+00:00",
+        lease_owner="dead-process", worker_id="dead-process",
+        heartbeat_at="2026-01-01T00:00:00+00:00",
+        lease_expires_at="2026-01-01T00:01:00+00:00",
+    ))
+    sv._last_recovery_scan = 0.0
+
+    card = R(sv.progress(task_id))
+    assert card["status"] == "orphaned"
+    assert card["recoverable"] is True
+    assert R(sv.recover(task_id)) is True
+    assert R(wait_status(task_id, "done"))["status"] == "done"
+    assert R(sv.collect(task_id)) == "recovered"
+
+
 def test_event_isolation():
     _setup()
     sv._worker_graph = lambda role, gate: (_fake_graph(emit_event=True), {
@@ -216,32 +352,23 @@ def test_provider_envelope():
     prov = TaskProvider()
     raw = R(prov.call_tool("task_list", {}))
     data = _json.loads(raw)
-    assert data.get("ok") is True, raw
+    assert data.get("outcome") == "succeeded", raw
     assert isinstance(data.get("data", {}).get("tasks", []), list)
     bad = R(prov.call_tool("task_progress", {"task_id": "nope99"}))
-    assert _json.loads(bad).get("ok") is False
+    assert _json.loads(bad).get("outcome") == "failed"
+    recover_bad = R(prov.call_tool("task_recover", {"task_id": "nope99"}))
+    assert _json.loads(recover_bad).get("outcome") == "failed"
 
 
 # ---- runner ----
 
 def _teardown():
     """关掉 store 连接并取消残留后台任务，保证进程干净退出。"""
-    for t in list(sv._running.values()):
-        t.cancel()
-
-    async def _close():
-        # 注意：AsyncSqliteStore.aclose() 在该环境会挂起（与 __del__ 同类兼容
-        # 问题）——直接关 aiosqlite 连接即可结束线程。
-        if sv._store_conn is not None:
-            try:
-                await sv._store_conn.close()
-            except Exception:
-                pass
-
     try:
-        _loop.run_until_complete(_close())
+        _loop.run_until_complete(sv.shutdown_supervisor())
     except Exception:
         pass
+    _loop.close()
 
 
 def _main():
@@ -252,6 +379,9 @@ def _main():
             test_dispatch_progress_collect,
             test_cancel,
             test_interrupt_resume,
+            test_resume_is_single_flight,
+            test_resume_rebuilds_graph_after_process_restart,
+            test_expired_lease_is_orphaned_and_recoverable,
             test_event_isolation,
             test_registry_find,
             test_provider_envelope,

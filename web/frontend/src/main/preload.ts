@@ -3,11 +3,13 @@ import { contextBridge, ipcRenderer } from 'electron'
 export interface BackendStatus {
   status: string
   port?: number
+  token?: string
   error?: string
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getBackendPort: () => ipcRenderer.invoke('get-backend-port') as Promise<number | null>,
+  getBackendToken: () => ipcRenderer.invoke('get-backend-token') as Promise<string | null>,
   getBackendStatus: () => ipcRenderer.invoke('get-backend-status') as Promise<string>,
   restartBackend: () => ipcRenderer.invoke('backend-restart') as Promise<string>,
   selectDirectory: (defaultPath?: string) =>

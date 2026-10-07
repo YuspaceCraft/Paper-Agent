@@ -28,13 +28,25 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import socket
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage  # noqa: F401
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.types import Command
+
+from .core.contracts import (
+    AgentError,
+    ErrorType,
+    OperationKind,
+    OperationOutcome,
+    OperationResult,
+    ResultMeta,
+)
+from .core.result_utils import extract_final_answer, structured_error_payload
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TASK_STORE_DB = PROJECT_ROOT / "task_store.db"
@@ -49,10 +61,74 @@ _graphs: dict[str, object] = {}          # task_id -> CompiledStateGraph（供 r
 _graph_cache: dict[tuple[str, bool], object] = {}  # (role, leader_gate) -> CompiledStateGraph
 _bg: set[asyncio.Task] = set()
 _store_lock: asyncio.Lock | None = None
+_recovery_lock: asyncio.Lock | None = None
+_transition_lock = asyncio.Lock()
+_last_recovery_scan = 0.0
+
+TASK_LEASE_SECONDS = float(os.getenv("AGENT_TASK_LEASE_SECONDS", "60"))
+TASK_HEARTBEAT_SECONDS = float(
+    os.getenv("AGENT_TASK_HEARTBEAT_SECONDS", "15")
+)
+RECOVERY_SCAN_SECONDS = float(
+    os.getenv("AGENT_TASK_RECOVERY_SCAN_SECONDS", "5")
+)
+_WORKER_OWNER = (
+    f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:6]}"
+)
 
 
 def _now() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _task_result(
+    *,
+    task_id: str,
+    role: str,
+    outcome: OperationOutcome,
+    duration_ms: float,
+    data: dict | None = None,
+    error: AgentError | None = None,
+    effect_applied: str | None = None,
+) -> dict:
+    result = OperationResult(
+        kind=OperationKind.TASK,
+        operation_id=task_id,
+        outcome=outcome,
+        data=data,
+        error=error,
+        meta=ResultMeta(
+            tool_name=role,
+            duration_ms=duration_ms,
+            attempt=1,
+            max_attempts=1,
+            effect_applied=effect_applied,
+        ),
+    )
+    return result.model_dump(mode="json")
+
+
+def _lease_deadline() -> str:
+    return (
+        datetime.now(timezone.utc) + timedelta(seconds=TASK_LEASE_SECONDS)
+    ).isoformat(timespec="seconds")
+
+
+def _parse_time(value: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value or ""))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _lease_expired(meta: dict) -> bool:
+    deadline = _parse_time(meta.get("lease_expires_at", ""))
+    if deadline is None:
+        return True
+    return deadline <= datetime.now(timezone.utc)
 
 
 def init_supervisor(checkpointer: BaseCheckpointSaver | None) -> None:
@@ -60,6 +136,42 @@ def init_supervisor(checkpointer: BaseCheckpointSaver | None) -> None:
     checkpoints.db）。None 时仅 Store/文件系统能力可用（/api/tasks 列表场景）。"""
     global _checkpointer
     _checkpointer = checkpointer
+
+
+def reset_worker_graph_cache() -> None:
+    """Invalidate idle worker templates after tools/config are reloaded.
+
+    Running task objects stay in ``_graphs`` until they finish; only the
+    role-level cache is replaced for future dispatches.
+    """
+    _graph_cache.clear()
+
+
+async def shutdown_supervisor() -> None:
+    """Cancel background workers and close the supervisor store cleanly."""
+    global _store, _store_conn, _store_lock, _checkpointer
+
+    tasks = {t for t in [*_running.values(), *_bg] if not t.done()}
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    _running.clear()
+    _graphs.clear()
+    _graph_cache.clear()
+    _bg.clear()
+
+    conn = _store_conn
+    _store = None
+    _store_conn = None
+    _store_lock = None
+    _checkpointer = None
+    if conn is not None:
+        try:
+            await conn.close()
+        except Exception:
+            pass
 
 
 async def _get_store():
@@ -139,8 +251,13 @@ async def request_review(question: str) -> str:
 
 # ---- store 元数据读写 ----
 
-_META_KEYS = ("task_id", "role", "title", "input_preview", "parent_thread",
-              "status", "created_at", "updated_at", "error")
+_META_KEYS = (
+    "task_id", "role", "title", "input_preview", "parent_thread",
+    "status", "created_at", "updated_at", "error", "output_preview",
+    "leader_gate", "model", "attempt", "worker_id", "lease_owner",
+    "heartbeat_at", "lease_expires_at", "recoverable",
+    "result",
+)
 
 
 async def _meta_put(task_id: str, **fields) -> None:
@@ -168,7 +285,23 @@ def _pick(m: dict) -> dict:
     keep["parent_thread"] = str(keep.get("parent_thread") or "")
     keep["status"] = str(keep.get("status") or "unknown")
     keep["created_at"] = str(keep.get("created_at") or "")
+    keep["updated_at"] = str(keep.get("updated_at") or "")
     keep["error"] = str(keep.get("error") or "")[:500]
+    keep["output_preview"] = str(keep.get("output_preview") or "")[:800]
+    keep["leader_gate"] = bool(keep.get("leader_gate"))
+    keep["model"] = str(keep.get("model") or "")
+    try:
+        keep["attempt"] = int(keep.get("attempt") or 0)
+    except (TypeError, ValueError):
+        keep["attempt"] = 0
+    for key in (
+        "worker_id", "lease_owner", "heartbeat_at", "lease_expires_at",
+    ):
+        keep[key] = str(keep.get(key) or "")
+    keep["recoverable"] = bool(keep.get("recoverable"))
+    keep["result"] = (
+        keep.get("result") if isinstance(keep.get("result"), dict) else None
+    )
     out = m.get("output")
     keep["output"] = (out or "")[:200_000]
     return keep
@@ -201,9 +334,73 @@ async def _meta_scan() -> list[dict]:
     return out
 
 
+async def recover_expired_leases(*, force: bool = False) -> list[str]:
+    """Mark dead-worker tasks orphaned once per process.
+
+    A live local task or an unexpired lease is left untouched. Interrupted
+    tasks never enter this path because they are intentionally not running.
+    """
+    global _recovery_lock, _last_recovery_scan
+    now = time.monotonic()
+    if (
+        not force
+        and _last_recovery_scan
+        and now - _last_recovery_scan < max(0.0, RECOVERY_SCAN_SECONDS)
+    ):
+        return []
+    if _recovery_lock is None:
+        _recovery_lock = asyncio.Lock()
+    recovered: list[str] = []
+    async with _recovery_lock:
+        for meta in await _meta_scan():
+            task_id = str(meta.get("task_id") or "")
+            stored = str(meta.get("status") or "")
+            if not task_id or stored not in ("pending", "running"):
+                continue
+            local = _running.get(task_id)
+            if local is not None and not local.done():
+                continue
+            if not _lease_expired(meta):
+                continue
+            await _meta_put(
+                task_id,
+                status="orphaned",
+                recoverable=True,
+                worker_id=None,
+                lease_owner=None,
+                heartbeat_at=None,
+                lease_expires_at=None,
+                error="worker lease expired; task can be recovered",
+            )
+            recovered.append(task_id)
+        _last_recovery_scan = time.monotonic()
+    return recovered
+
+
 # ---- 后台 runner ----
 
-async def _run_worker(task_id: str, run_input, config: dict, graph) -> None:
+async def _heartbeat_loop(task_id: str, owner: str) -> None:
+    """Renew the persisted lease while this worker remains the owner."""
+    while True:
+        await asyncio.sleep(max(1.0, TASK_HEARTBEAT_SECONDS))
+        meta = await _meta_get(task_id)
+        if (
+            not meta
+            or meta.get("status") != "running"
+            or meta.get("lease_owner") != owner
+        ):
+            return
+        await _meta_put(
+            task_id,
+            heartbeat_at=_now(),
+            lease_expires_at=_lease_deadline(),
+        )
+
+
+async def _run_worker(
+    task_id: str, run_input, config: dict, graph,
+    lease_owner: str | None = None,
+) -> None:
     """后台执行 worker 图。隔离事件流 + 状态推进 + 产出落 store。
 
     run_input: init_state dict（首次）或 Command(resume=reply)（interrupt 续跑）。
@@ -211,20 +408,108 @@ async def _run_worker(task_id: str, run_input, config: dict, graph) -> None:
     保留 graph 供 resume；否则 done/failed，写产出，清 graph 缓存。
     """
     from .stream import set_event_queue, reset_event_queue, set_scope, reset_scope
+    from .observability import log_event
 
     q_tok = set_event_queue(None)   # 后台子图事件不泄漏进任何 SSE 回合
     s_tok = set_scope("compartment", task_id)
+    ctx_tok = None
+    started = time.time()
+    owner = lease_owner or _WORKER_OWNER
+    heartbeat: asyncio.Task | None = None
     try:
-        await _meta_put(task_id, status="running")
+        from .core.execution_context import (
+            build_execution_context,
+            reset_current_execution_context,
+            set_current_execution_context,
+        )
+
+        worker_ctx = build_execution_context(
+            thread_id=task_id,
+            request_id=task_id,
+            execution_id=f"task:{task_id}",
+            roles={"user"},
+        )
+        worker_ctx.bind_runnable_config(config)
+        ctx_tok = set_current_execution_context(worker_ctx)
+        meta = await _meta_get(task_id) or {}
+        role = str(meta.get("role") or "")
+        attempt = int(meta.get("attempt") or 0) + 1
+        await _meta_put(
+            task_id,
+            status="running",
+            attempt=attempt,
+            worker_id=owner,
+            lease_owner=owner,
+            heartbeat_at=_now(),
+            lease_expires_at=_lease_deadline(),
+            recoverable=False,
+            error=None,
+        )
+        heartbeat = asyncio.create_task(_heartbeat_loop(task_id, owner))
+        _bg.add(heartbeat)
+        heartbeat.add_done_callback(_bg.discard)
+        log_event("subagent_start", node="supervisor", task_id=task_id)
         try:
-            result = await graph.ainvoke(run_input, config=config)
+            # 子 agent 舱也是独立 LangSmith 根 run：每次 ainvoke 新 run_id
+            #（不污染共享 config，resume 复用同 config 时 lineage 不串）。
+            result = await graph.ainvoke(
+                run_input, {**config, "run_id": uuid.uuid4()})
         except asyncio.CancelledError:
-            await _meta_put(task_id, status="cancelled")
+            error = AgentError(
+                error_type=ErrorType.TASK,
+                code="TASK_CANCELLED",
+                message="Task execution was cancelled.",
+                user_message="任务已取消。",
+                retryable=False,
+                recovery_action="Resume or dispatch a new task if needed.",
+                tool_name=role,
+                effect_applied="unknown",
+            )
+            result_payload = _task_result(
+                task_id=task_id,
+                role=role,
+                outcome=OperationOutcome.CANCELLED,
+                duration_ms=round((time.time() - started) * 1000, 1),
+                error=error,
+                effect_applied="unknown",
+            )
+            await _meta_put(
+                task_id, status="cancelled", worker_id=None,
+                lease_owner=None, heartbeat_at=None, lease_expires_at=None,
+                error=error.user_message, result=result_payload,
+            )
+            log_event("subagent_result", node="supervisor", task_id=task_id,
+                      status="cancelled",
+                      duration_ms=round((time.time() - started) * 1000, 1))
             raise
         except Exception as exc:
-            await _meta_put(task_id, status="failed",
-                            error=f"{type(exc).__name__}: {exc}")
-            await _meta_put(task_id, output_preview="")
+            error = AgentError(
+                error_type=ErrorType.TASK,
+                code="TASK_EXECUTION_FAILED",
+                message=f"{type(exc).__name__} while running task.",
+                user_message="子任务执行失败。",
+                retryable=False,
+                recovery_action="Inspect the task trace and retry explicitly.",
+                tool_name=role,
+                effect_applied="unknown",
+            )
+            result_payload = _task_result(
+                task_id=task_id,
+                role=role,
+                outcome=OperationOutcome.FAILED,
+                duration_ms=round((time.time() - started) * 1000, 1),
+                error=error,
+                effect_applied="unknown",
+            )
+            await _meta_put(
+                task_id, status="failed",
+                error=error.user_message, result=result_payload,
+                output_preview="", worker_id=None, lease_owner=None,
+                heartbeat_at=None, lease_expires_at=None,
+            )
+            log_event("subagent_result", node="supervisor", task_id=task_id,
+                      status="failed", error=error.code,
+                      duration_ms=round((time.time() - started) * 1000, 1))
             _finish(task_id)
             return
 
@@ -238,7 +523,21 @@ async def _run_worker(task_id: str, run_input, config: dict, graph) -> None:
         except Exception:
             pass
         if interrupted:
-            await _meta_put(task_id, status="interrupted")
+            result_payload = _task_result(
+                task_id=task_id,
+                role=role,
+                outcome=OperationOutcome.INTERRUPTED,
+                duration_ms=round((time.time() - started) * 1000, 1),
+                data={"question": _pending_question(snap)},
+            )
+            await _meta_put(
+                task_id, status="interrupted", recoverable=True,
+                worker_id=None, lease_owner=None, heartbeat_at=None,
+                lease_expires_at=None, result=result_payload,
+            )
+            log_event("subagent_result", node="supervisor", task_id=task_id,
+                      status="interrupted",
+                      duration_ms=round((time.time() - started) * 1000, 1))
             # 保留 graph 缓存，供 resume(); _running 移除（不再自动跑）
             _running.pop(task_id, None)
             _graphs[task_id] = graph
@@ -248,25 +547,79 @@ async def _run_worker(task_id: str, run_input, config: dict, graph) -> None:
             output = _extract_output(result)
         else:
             output = _extract_output(getattr(snap, "values", {}) if snap else {})
-        await _meta_put(task_id, status="done", output=output, error=None)
+        answer_error = structured_error_payload(output) if output else None
+        if output and answer_error is None:
+            result_payload = _task_result(
+                task_id=task_id,
+                role=role,
+                outcome=OperationOutcome.SUCCEEDED,
+                duration_ms=round((time.time() - started) * 1000, 1),
+                data={"output": output},
+                effect_applied="yes",
+            )
+            status = "done"
+            error_text = None
+        else:
+            code = (
+                str(answer_error.get("error") or "SUBAGENT_EMPTY_OUTPUT")
+                if answer_error else "SUBAGENT_EMPTY_OUTPUT"
+            )
+            detail = (
+                str(answer_error.get("detail") or answer_error.get("error") or "")
+                if answer_error else ""
+            )
+            error = AgentError(
+                error_type=ErrorType.SUBAGENT,
+                code=code,
+                message=detail or "Subagent produced no final output.",
+                user_message=(
+                    f"子任务执行失败：{detail}"
+                    if detail else "子任务没有生成最终结果。"
+                ),
+                retryable=False,
+                recovery_action="Retry with a more explicit task.",
+                tool_name=role,
+            )
+            result_payload = _task_result(
+                task_id=task_id,
+                role=role,
+                outcome=OperationOutcome.FAILED,
+                duration_ms=round((time.time() - started) * 1000, 1),
+                error=error,
+            )
+            status = "failed"
+            error_text = error.user_message
+        await _meta_put(
+            task_id, status=status, output=output, error=error_text,
+            result=result_payload,
+            worker_id=None, lease_owner=None, heartbeat_at=None,
+            lease_expires_at=None, recoverable=False,
+        )
+        log_event("subagent_result", node="supervisor", task_id=task_id,
+                  status=status, output_preview=output[:800],
+                  duration_ms=round((time.time() - started) * 1000, 1))
         _graphs.pop(task_id, None)
         _finish(task_id)
     finally:
+        if heartbeat is not None:
+            heartbeat.cancel()
+            await asyncio.gather(heartbeat, return_exceptions=True)
+        if ctx_tok is not None:
+            reset_current_execution_context(ctx_tok)
         reset_event_queue(q_tok)
         reset_scope(s_tok)
 
 
 def _extract_output(state: dict) -> str:
-    msgs = state.get("messages") or []
-    for m in reversed(msgs):
-        if not (getattr(m, "type", "") == "ai" and hasattr(m, "content")):
-            continue
-        if getattr(m, "tool_calls", None):
-            continue
-        c = str(m.content or "").strip()
-        if c:
-            return c
-    return ""
+    return extract_final_answer(state.get("messages") or [])
+
+
+def _pending_question(snapshot) -> Any:
+    tasks = getattr(snapshot, "tasks", None) or ()
+    if not tasks:
+        return None
+    interrupts = getattr(tasks[0], "interrupts", None) or ()
+    return getattr(interrupts[0], "value", None) if interrupts else None
 
 
 def _finish(task_id: str) -> None:
@@ -287,13 +640,30 @@ async def dispatch(role: str, title: str, task: str,
         config["configurable"]["model"] = model
     run_input = dict(init_state)
     run_input["messages"] = [HumanMessage(content=task or title or "")]
-    await _meta_put(task_id, role=role, title=title or role,
-                    input_preview=task or "", parent_thread=parent_thread,
-                    status="pending", error=None, output_preview="",
-                    created_at=_now())
+    await _meta_put(
+        task_id, role=role, title=title or role,
+        input_preview=task or "", parent_thread=parent_thread,
+        status="pending", error=None, output_preview="",
+        created_at=_now(), model=model or "", leader_gate=leader_gate,
+        attempt=0, worker_id=_WORKER_OWNER, lease_owner=_WORKER_OWNER,
+        heartbeat_at=_now(), lease_expires_at=_lease_deadline(),
+        recoverable=True,
+    )
+    from .observability import log_event
+    from .subagents import SUBAGENTS
+
+    spec = next((item for item in SUBAGENTS if item.name == role), None)
+
+    log_event("subagent_dispatch", node="supervisor", task_id=task_id,
+              role=role, title=title or role, parent_thread=parent_thread,
+              task_preview=(task or "")[:800], model=model or "",
+              tools=list(spec.tools) if spec else [],
+              prompt_preview=(spec.system_prompt[:800] if spec else ""))
 
     _graphs[task_id] = graph  # 运行期即可读状态栈（_finish/interrupted 才释放）
-    bg = asyncio.create_task(_run_worker(task_id, run_input, config, graph))
+    bg = asyncio.create_task(_run_worker(
+        task_id, run_input, config, graph, lease_owner=_WORKER_OWNER,
+    ))
     _running[task_id] = bg
     _bg.add(bg)
     bg.add_done_callback(_bg.discard)
@@ -303,6 +673,7 @@ async def dispatch(role: str, title: str, task: str,
 async def progress(task_id: str) -> dict:
     """读单个任务的状态栈：store 状态 + checkpoint（next/iteration/messages/
     interrupted 问题）。任务不存在 → 抛 ValueError。"""
+    await recover_expired_leases()
     meta = await _meta_get(task_id)
     if not meta:
         raise ValueError(f"task '{task_id}' not found")
@@ -312,7 +683,9 @@ async def progress(task_id: str) -> dict:
     graph = _graphs.get(task_id)
     if graph is None:
         graph = await _graph_for_meta(meta)
-    if graph is not None and card["status"] in ("running", "interrupted", "done"):
+    if graph is not None and card["status"] in (
+        "running", "interrupted", "done", "orphaned",
+    ):
         try:
             snap = await graph.aget_state(
                 {"configurable": {"thread_id": task_id}})
@@ -346,11 +719,14 @@ async def _graph_for_meta(meta: dict) -> object | None:
 
 
 def _effective_status(task_id: str, stored: str, meta: dict) -> str:
-    """running 但无在跑的 asyncio task → 孤儿（进程重启后 checkpoint 仍在）。"""
-    if stored == "running":
+    """Resolve local execution state against the persisted worker lease."""
+    if stored in ("pending", "running"):
         t = _running.get(task_id)
-        if t is None or t.done():
-            return "orphaned" if meta.get("status", "running") == "running" else stored
+        if t is not None and not t.done():
+            return stored
+        if not _lease_expired(meta):
+            return stored
+        return "orphaned"
     return stored
 
 
@@ -372,7 +748,30 @@ async def collect(task_id: str) -> str:
 
 async def cancel(task_id: str) -> None:
     """干预：取消在跑后台任务，标记 cancelled。"""
-    await _meta_put(task_id, status="cancelled")
+    meta = await _meta_get(task_id) or {}
+    error = AgentError(
+        error_type=ErrorType.TASK,
+        code="TASK_CANCELLED",
+        message="Task was cancelled by the leader.",
+        user_message="任务已取消。",
+        retryable=False,
+        recovery_action="Resume or dispatch a new task if needed.",
+        tool_name=str(meta.get("role") or ""),
+        effect_applied="unknown",
+    )
+    result_payload = _task_result(
+        task_id=task_id,
+        role=str(meta.get("role") or ""),
+        outcome=OperationOutcome.CANCELLED,
+        duration_ms=0.0,
+        error=error,
+        effect_applied="unknown",
+    )
+    await _meta_put(
+        task_id, status="cancelled", worker_id=None, lease_owner=None,
+        heartbeat_at=None, lease_expires_at=None, recoverable=False,
+        error=error.user_message, result=result_payload,
+    )
     t = _running.get(task_id)
     if t and not t.done():
         t.cancel()
@@ -381,12 +780,63 @@ async def cancel(task_id: str) -> None:
 
 async def resume(task_id: str, reply: str) -> bool:
     """领导干预：向 interrupt 暂停的任务回复并续跑（Command(resume=reply)）。"""
+    async with _transition_lock:
+        return await _resume_locked(task_id, reply)
+
+
+async def _resume_locked(task_id: str, reply: str) -> bool:
+    await recover_expired_leases()
+    existing = _running.get(task_id)
+    if existing is not None and not existing.done():
+        return False
+    meta = await _meta_get(task_id)
+    if not meta:
+        raise ValueError(f"task '{task_id}' not found")
+    if meta.get("status") != "interrupted":
+        raise ValueError(f"task '{task_id}' is not interrupted")
     graph = _graphs.get(task_id)
+    if graph is None:
+        graph = await _graph_for_meta(meta)
     if graph is None:
         raise ValueError(f"task '{task_id}' has no resumable interrupt")
     config = {"configurable": {"thread_id": task_id}}
+    if meta.get("model"):
+        config["configurable"]["model"] = str(meta["model"])
     bg = asyncio.create_task(_run_worker(
-        task_id, Command(resume=reply), config, graph))
+        task_id, Command(resume=reply), config, graph,
+        lease_owner=_WORKER_OWNER,
+    ))
+    _running[task_id] = bg
+    _bg.add(bg)
+    bg.add_done_callback(_bg.discard)
+    return True
+
+
+async def recover(task_id: str) -> bool:
+    """Reattach an orphaned task to its checkpoint and continue execution."""
+    async with _transition_lock:
+        return await _recover_locked(task_id)
+
+
+async def _recover_locked(task_id: str) -> bool:
+    await recover_expired_leases(force=True)
+    existing = _running.get(task_id)
+    if existing is not None and not existing.done():
+        return False
+    meta = await _meta_get(task_id)
+    if not meta:
+        raise ValueError(f"task '{task_id}' not found")
+    if meta.get("status") != "orphaned":
+        raise ValueError(f"task '{task_id}' is not orphaned")
+    graph = await _graph_for_meta(meta)
+    if graph is None:
+        raise ValueError(f"task '{task_id}' cannot rebuild its worker graph")
+    config = {"configurable": {"thread_id": task_id}}
+    if meta.get("model"):
+        config["configurable"]["model"] = str(meta["model"])
+    bg = asyncio.create_task(_run_worker(
+        task_id, None, config, graph, lease_owner=_WORKER_OWNER,
+    ))
     _running[task_id] = bg
     _bg.add(bg)
     bg.add_done_callback(_bg.discard)
@@ -395,6 +845,7 @@ async def resume(task_id: str, reply: str) -> bool:
 
 async def list_tasks(kind: str = "") -> list[dict]:
     """全部派发任务（store 元数据快照，latest first；列表不携带完整 output）。"""
+    await recover_expired_leases()
     metas = await _meta_scan()
     if kind:
         metas = [m for m in metas
@@ -403,6 +854,13 @@ async def list_tasks(kind: str = "") -> list[dict]:
     for m in metas:
         card = dict(m)
         card.pop("output", None)  # 列表视图不背完整产出（collect 单独取）
+        result = card.pop("result", None)
+        if isinstance(result, dict):
+            card["outcome"] = str(result.get("outcome") or "")
+            error = result.get("error")
+            if isinstance(error, dict):
+                card["error_code"] = str(error.get("code") or "")
+                card["retryable"] = bool(error.get("retryable"))
         card["status"] = _effective_status(card.get("task_id", ""),
                                            card.get("status", "unknown"), m)
         out.append(card)

@@ -36,6 +36,14 @@ from .pdf import _locate_and_dedup, _run_pipeline
 from .index import _run_indexing
 from agent.safety import sanitize_output
 from agent.stream import set_event_queue, reset_event_queue
+from agent.core.contracts import (
+    AgentError,
+    ErrorType,
+    OperationKind,
+    OperationOutcome,
+    OperationResult,
+    ResultMeta,
+)
 
 router = APIRouter(prefix="/api/agent", tags=["Agent background tasks"])
 
@@ -46,6 +54,40 @@ router = APIRouter(prefix="/api/agent", tags=["Agent background tasks"])
 
 
 # ---- unified ingest runner ----
+
+def _task_operation(
+    task_id: str,
+    *,
+    outcome: OperationOutcome,
+    data: dict | None = None,
+    code: str = "",
+    user_message: str = "",
+) -> dict:
+    error = None
+    if outcome in {
+        OperationOutcome.FAILED,
+        OperationOutcome.TIMED_OUT,
+        OperationOutcome.CANCELLED,
+    }:
+        error = AgentError(
+            error_type=(
+                ErrorType.TASK
+                if outcome is OperationOutcome.FAILED
+                else ErrorType.AGENT_RUNTIME
+            ),
+            code=code or "TASK_EXECUTION_FAILED",
+            message=code or "task execution failed",
+            user_message=user_message or "后台任务执行失败。",
+            retryable=False,
+        )
+    return OperationResult(
+        kind=OperationKind.TASK,
+        operation_id=task_id,
+        outcome=outcome,
+        data=data,
+        error=error,
+        meta=ResultMeta(tool_name="ingest"),
+    ).model_dump(mode="json")
 
 def _run_ingest(task_id: str, paper_name: str, pdf_path: str):
     """后台执行「入库」：解析 PDF → 写入向量库，同一个任务的完整过程。
@@ -64,11 +106,15 @@ def _run_ingest(task_id: str, paper_name: str, pdf_path: str):
         # 数据——正是「入库说完成、检查说未入库」这种矛盾状态的源头。
         if existing and bool(existing.get("indexed")):  # 与 reader.py bool() 同源，展示/判定不脱节
             _task_update(task_id, status="done", stage="", progress="Complete",
-                         result=json.dumps({
-                             "status": "indexed",
-                             "paper_name": existing.get("title", paper_name) or paper_name,
-                             "message": "该论文已在库中（重复，无需重新处理）",
-                         }, ensure_ascii=False))
+                         result=json.dumps(_task_operation(
+                             task_id,
+                             outcome=OperationOutcome.SUCCEEDED,
+                             data={
+                                 "status": "indexed",
+                                 "paper_name": existing.get("title", paper_name) or paper_name,
+                                 "message": "该论文已在库中（重复，无需重新处理）",
+                             },
+                         ), ensure_ascii=False))
             return
 
         # Stage 1 — 解析。output dir 已有 rag_chunks.json 则跳过 docling 重解析，
@@ -101,21 +147,48 @@ def _run_ingest(task_id: str, paper_name: str, pdf_path: str):
         result = (t.get("result") or {}) if isinstance(t.get("result"), dict) else {}
         chunk_count = result.get("total_chunks") or result.get("total") or 0
         _task_update(task_id, status="done", stage="", progress="Complete",
-                     result=json.dumps({
-                         "status": "indexed", "paper_name": paper_name,
-                         "chunk_count": chunk_count,
-                         "message": "已完成入库，可在知识库中检索。",
-                         "stages": {
-                             "parse": {"status": "done"},
-                             "index": {"status": "done", "chunk_count": chunk_count},
+                     result=json.dumps(_task_operation(
+                         task_id,
+                         outcome=OperationOutcome.SUCCEEDED,
+                         data={
+                             "status": "indexed", "paper_name": paper_name,
+                             "chunk_count": chunk_count,
+                             "message": "已完成入库，可在知识库中检索。",
+                             "stages": {
+                                 "parse": {"status": "done"},
+                                 "index": {"status": "done", "chunk_count": chunk_count},
+                             },
                          },
-                     }, ensure_ascii=False))
+                     ), ensure_ascii=False))
     except HTTPException as exc:
+        operation = _task_operation(
+            task_id,
+            outcome=OperationOutcome.FAILED,
+            code="INGEST_REQUEST_FAILED",
+            user_message="入库请求失败。",
+        )
         _task_update(task_id, status="failed", stage="",
-                     error=f"{exc.status_code}: {exc.detail}")
+                     error="入库请求失败。", error_code="INGEST_REQUEST_FAILED",
+                     result=json.dumps(operation, ensure_ascii=False))
     except Exception as exc:
+        from agent.observability import log_event
+
+        log_event(
+            "ingest_task_failed",
+            node="background",
+            level="warning",
+            task_id=task_id,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        operation = _task_operation(
+            task_id,
+            outcome=OperationOutcome.FAILED,
+            code="INGEST_EXECUTION_FAILED",
+            user_message="入库执行失败。",
+        )
         _task_update(task_id, status="failed", stage="",
-                     error=f"{type(exc).__name__}: {exc}")
+                     error="入库执行失败。", error_code="INGEST_EXECUTION_FAILED",
+                     result=json.dumps(operation, ensure_ascii=False))
 
 
 # ---- endpoints ----
@@ -169,7 +242,7 @@ async def task_stream():
     """
     loop = asyncio.get_running_loop()
     set_task_loop(loop)
-    q: asyncio.Queue = asyncio.Queue()
+    q: asyncio.Queue = asyncio.Queue(maxsize=200)
     _subscribe_task_stream(q)
 
     async def _events():
@@ -207,8 +280,18 @@ async def notify_stream(req: AgentNotifyRequest):
     """
     from agent.notifier import stream_task_notify
 
+    async def _cancel_tasks(*tasks) -> None:
+        present = [task for task in tasks if task is not None]
+        for task in present:
+            if not task.done():
+                task.cancel()
+        if present:
+            await asyncio.gather(*present, return_exceptions=True)
+
     async def _gen():
         ev_token = None
+        ev_task = None
+        n_task = None
         try:
             events_q: asyncio.Queue = asyncio.Queue()
             out: asyncio.Queue = asyncio.Queue()
@@ -245,8 +328,17 @@ async def notify_stream(req: AgentNotifyRequest):
             await n_task
             yield "data: {\"type\": \"done\"}\n\n"
         except Exception as exc:
-            yield f"data: {json.dumps({'type': 'error', 'message': f'{type(exc).__name__}: {exc}'}, ensure_ascii=False)}\n\n"
+            from agent.observability import log_event
+
+            log_event(
+                "notify_stream_failed",
+                node="background",
+                level="warning",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            yield f"data: {json.dumps({'type': 'error', 'code': 'notify_runtime', 'message': '通知生成失败。'}, ensure_ascii=False)}\n\n"
         finally:
+            await _cancel_tasks(ev_task, n_task)
             if ev_token is not None:
                 reset_event_queue(ev_token)
 

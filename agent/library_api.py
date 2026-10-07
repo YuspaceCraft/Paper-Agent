@@ -45,3 +45,9 @@ def api_mark_up(api: str) -> None:
 def api_timeout(default: float = 10.0, connect: float = 2.0) -> httpx.Timeout:
     """本地后端在 127.0.0.1——connect 2s 足够；不要为死端口白等 10s。"""
     return httpx.Timeout(default, connect=connect)
+
+
+def api_headers() -> dict[str, str]:
+    """Auth header for internal calls to the loopback FastAPI service."""
+    token = (os.getenv("DEMO_API_TOKEN", "") or "").strip()
+    return {"X-Demo-Token": token} if token else {}

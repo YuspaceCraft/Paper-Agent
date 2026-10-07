@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "c4411b6e4585639b0c698a0991f40b94",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "eeb711f6ea5e40f7b8aa73059e2f0ed8",
+    "execution_id": "8d363577f8914ff09ffc7f24399efd68",
+    "thread_id": "evalqa:eval_5a576970:rag_hard_short_levircc_conflict",
+    "tool_name": "search_papers",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 31.000000017229468,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "b0a4798ec961baafed1a4c508bbe9cd0",
+      "sha256": "b0a4798ec961baafed1a4c508bbe9cd0496b8629aaae6e04cde6be224f1d4e21",
+      "bytes": 6101,
+      "chars": 6100,
+      "media_type": "application/json",
+      "tool_name": "search_papers",
+      "execution_id": "8d363577f8914ff09ffc7f24399efd68",
+      "thread_id": "evalqa:eval_5a576970:rag_hard_short_levircc_conflict",
+      "created_at": "2026-09-20T01:40:04.753564+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\b0\\b0a4798ec961baafed1a4c508bbe9cd0.txt"
+    }
+  ],
+  "data": {
+    "results": [
+      {
+        "chunk_id": "2022_chenyang_liu_remote_dataset__chunk_0005",
+        "paper": "2022_chenyang_liu_remote_dataset",
+        "section": "II. RELATED WORK",
+        "text": "available large-scale dataset named LEVIR-CC to advance the CC task in the RS community. We benchmark existing state-of-the-art synthetic image CC methods on the LEVIR-CC dataset, and our RSICCformer outperforms these methods with a  \nsignificant margin ( + 4.98% on BLEU-4 and + 9.86% on CIDEr-D).\n\n## II. RELATED WORK  \nThe RSICC task can be considered a combination of change detection (CD) and image captioning. Unlike CD requiring pixel-level change localization, CC requires understanding changes at the semantic level, including the attributes of the changed object and the positional relationship between objects. Unlike image captioning describing the visual content of interest in a single image, CC requires describing the visual chan",
+        "score": 0.28665801637599125
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0026",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "A. LEVIR-CC Dataset",
+        "text": "## IV. EXPERIMENTS  \nIn this section, we describe the experimental results of our model  and  previous  state-of-the-art  methods  through  several experimental  setups  on  LEVIR-CC  dataset. We also conduct ablation  experiments  on  different  sub-structures,  including image feature extraction, mapping of image features and caption vectors and self-attention blocks to demonstrate the effectiveness of each module.\n\n## A. LEVIR-CC Dataset  \nLEVIR-CC is a large-scale change captioning dataset proposed  by  Liu  et  al  [6].  It  contains  10077  image  pairs  (5038 changed image pairs and 5039 unchanged image pairs) from 20 different regions in Texas, USA. The images cover a time span ranging from 5 to 15 years and are sized at 256×256",
+        "score": 0.21219493797298955
+      },
+      {
+        "chunk_id": "2022_chenyang_liu_remote_dataset__chunk_0004",
+        "paper": "2022_chenyang_liu_remote_dataset",
+        "section": "I. INTRODUCTION",
+        "text": "mechanism in RSICCformer to utilize the difference information, in which the query is from the features of one image, and the key and value are from the difference features. Experiments show that this strategy effectively improves the model's feature representation and discriminative ability.\n\nOur contributions can be summarized as follows.  \n- 1) We conduct an in-depth study of an emerging task named RSICC that aims at generating human-like language descriptions for the ground feature changes in multitemporal RS images. The RSICC provides significant application prospects, such as damage assessment, environmental protection, and land planning, and may help explore models to align visual changes and language in RS images.\n- 2) We",
+        "score": 0.1519046024446162
+      },
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0017",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "D. Comparisons",
+        "text": "the model, and their combined effect leads to significant improvements across all evaluated metrics. The ablation study not only highlights the importance of each individual module but also underscores the potential for further performance gains through the strategic combination of these modules.\n\n## D. Comparisons  \nA comparative analysis is conducted between the proposed method and several state-of-the-art (SOTA) approaches, including DUDA [30], MCCFormers [31], RSICCformer [16], Chg2Cap [20], SEN [32], ICT-Net [33], MAF-Net [34], and RSCaMa [35].  \n1) Comparisons on the LEVIR-CC Dataset: A comprehensive evaluation of the CTM's performance on the LEVIR-CC dataset was conducted. As shown in Table IV, CTM demonstrates exceptional performa",
+        "score": 0.1453080955765088
+      },
+      {
+        "chunk_id": "2022_chenyang_liu_remote_dataset__chunk_0000",
+        "paper": "2022_chenyang_liu_remote_dataset",
+        "section": "Remote Sensing Image Change Captioning With Dual-Branch Transformers: A New Method and a Large Scale Dataset",
+        "text": "## Remote Sensing Image Change Captioning With Dual-Branch Transformers: A New Method and a Large Scale Dataset  \nChenyang Liu , Rui Zhao , Hao Chen , Graduate Student Member, IEEE Zhengxia Zou , and Zhenwei Shi , Member, IEEE  \n<!-- image -->  \nAbstract -Analyzing land cover changes with multitemporal remote sensing (RS) images is crucial for environmental protection and land planning. In this article, we explore RS image change captioning (RSICC), a new task aiming at generating human-like language descriptions for the land cover changes in multitemporal RS images. We propose a novel Transformer-based RSICC (RSICCformer) model. It consists of three main components: 1) a CNN-based feature extractor to gener",
+        "score": 0.1190664816610332
+      }
+    ],
+    "papers": [
+      "2022_chenyang_liu_remote_dataset",
+      "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+      "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and"
+    ],
+    "total": 5
+  }
+}

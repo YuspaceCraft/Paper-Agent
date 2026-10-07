@@ -16,6 +16,8 @@ tools.py — agent tool public API.
 from __future__ import annotations
 
 import asyncio
+import os
+import uuid
 from pathlib import Path
 
 from langchain_core.tools import BaseTool, StructuredTool
@@ -30,6 +32,20 @@ _BASE_TOOLS: list[BaseTool] = []    # 完整注册表（供 subagent 挑选）
 _build_lock = asyncio.Lock()
 _built = False
 _prev_mcp_provider = None  # 上次构建的 MCPProvider（reload 时 close，防子进程堆积）
+_tool_registry = None      # ToolRegistry：本次构建的治理级只读快照
+_dispatcher = None         # ToolDispatcher：统一 ToolGateway 入口
+
+
+def tools_initialized() -> bool:
+    """True once ``ensure_tools`` has published a complete registry snapshot."""
+    return bool(_built and _tool_registry is not None)
+
+
+def _idempotency_db_path() -> Path:
+    raw = os.getenv("AGENT_IDEMPOTENCY_DB", "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return Path(__file__).resolve().parent.parent / "tool_idempotency.db"
 
 # 父 agent 工具面 = 文件 explorer 三件套 + 本地三态检测 + 后台任务查询
 # + 库只读工具 + skills + subagents（Claude Code 模式：全能父 agent 持有
@@ -42,10 +58,11 @@ _prev_mcp_provider = None  # 上次构建的 MCPProvider（reload 时 close，�
 # 模块级导出：配置中心工具清单（web/api/routers/config.py）用它展示父 agent 工具面。
 PARENT_NAMES = {"read_file", "list_dir", "write_file", "check_paper",
                 "check_task_status", "search_papers", "fetch_content",
+                "artifact_read",
                 "skill__list", "skill__load",
                 # 领导-部门制监督工具（父 agent 全量）
                 "task_dispatch", "task_progress", "task_collect",
-                "task_resume", "task_cancel", "task_list",
+                "task_resume", "task_recover", "task_cancel", "task_list",
                 # 对话-项目绑定（对话中心化）：父 agent 可 pin 项目 /
                 # 查询项目 manifest（写操作隔离在 coding 工具，此处仅
                 # 绑定+只读查询；改代码仍走 coder 子代理）
@@ -67,6 +84,16 @@ def get_base_tools() -> list[BaseTool]:
     return _BASE_TOOLS
 
 
+def get_tool_registry():
+    """Return the registry for the currently built tool surface.
+
+    The empty registry is intentional before startup; it keeps diagnostics and
+    configuration snapshots read-only and safe during import.
+    """
+    from .core.tool_registry import ToolRegistry
+    return _tool_registry or ToolRegistry()
+
+
 async def reload_tools(mcp_config: str | Path | None = None,
                        skills_dir: str = "skills") -> list[BaseTool]:
     """重新构建工具表（MCP 配置 / skills / 工具开关改动后调用）。
@@ -75,12 +102,27 @@ async def reload_tools(mcp_config: str | Path | None = None,
     config_store 的停用集合重新过滤。运行中的 agent 任务持有旧快照，
     新会话生效（前端已提示）。
     """
-    global _built
+    global _built, _tool_registry, _dispatcher
     async with _build_lock:
         _built = False
+        _tool_registry = None
+        _dispatcher = None
         _ALL_TOOLS.clear()
         _BASE_TOOLS.clear()
-    return await ensure_tools(mcp_config=mcp_config, skills_dir=skills_dir)
+    tools = await ensure_tools(mcp_config=mcp_config, skills_dir=skills_dir)
+    try:
+        from .graph import invalidate_agent_graph
+
+        invalidate_agent_graph()
+    except Exception:  # noqa: BLE001 — graph may not be initialized yet
+        pass
+    try:
+        from .supervisor import reset_worker_graph_cache
+
+        reset_worker_graph_cache()
+    except Exception:  # noqa: BLE001 — supervisor is optional outside runtime
+        pass
+    return tools
 
 
 async def ensure_tools(mcp_config: str | Path | None = None,
@@ -91,7 +133,7 @@ async def ensure_tools(mcp_config: str | Path | None = None,
         mcp_config: .mcp.json 路径，默认自动查找
         skills_dir: skills/ 目录路径
     """
-    global _ALL_TOOLS, _BASE_TOOLS, _built, _prev_mcp_provider
+    global _ALL_TOOLS, _BASE_TOOLS, _built, _prev_mcp_provider, _tool_registry, _dispatcher
     if _built:
         return _ALL_TOOLS
 
@@ -129,10 +171,20 @@ async def ensure_tools(mcp_config: str | Path | None = None,
 
         composite = CompositeToolProvider(providers)
         tooldefs = await composite.list_all()
+        from .core.tool_registry import ToolRegistry
+        _tool_registry = ToolRegistry.from_tooldefs(tooldefs)
 
         # 统一调度器：超时 + 重试 + 审计，覆盖所有 provider 的工具
         from .dispatcher import ToolDispatcher
-        dispatcher = ToolDispatcher(composite.call_tool, tooldefs)
+        from .core.idempotency import SQLiteIdempotencyStore
+
+        dispatcher = ToolDispatcher(
+            composite.call_tool,
+            tooldefs,
+            registry=_tool_registry,
+            idempotency_store=SQLiteIdempotencyStore(_idempotency_db_path()),
+        )
+        _dispatcher = dispatcher
 
         # 完整注册表（builtin + generic + mcp + skill），供 subagent 挑选子集。
         _BASE_TOOLS = [_to_langchain_tool(td, dispatcher.call) for td in tooldefs]
@@ -156,6 +208,22 @@ async def ensure_tools(mcp_config: str | Path | None = None,
         return _ALL_TOOLS
 
 
+async def close_tools() -> None:
+    """Close provider resources and invalidate the cached tool surface."""
+    global _built, _prev_mcp_provider, _tool_registry, _dispatcher
+    async with _build_lock:
+        provider = _prev_mcp_provider
+        _prev_mcp_provider = None
+        _tool_registry = None
+        _dispatcher = None
+        _built = False
+        if provider is not None:
+            try:
+                await provider.close()
+            except Exception:
+                pass
+
+
 # ---- 向后兼容导出 ----
 
 # ponytail: ALL_TOOLS 和 _ALL_TOOLS 指向同一列表，ensure_tools() 惰性填充。
@@ -171,6 +239,7 @@ def _to_langchain_tool(td, call_fn) -> BaseTool:
     使用空模型。
     """
     from pydantic import BaseModel, ConfigDict, Field, create_model
+    from .core.tool_registry import tool_spec_from_def
 
     parameters = td.parameters or {}
     props = parameters.get("properties", {})
@@ -184,12 +253,17 @@ def _to_langchain_tool(td, call_fn) -> BaseTool:
         async def _call_empty() -> str:
             return str(await call_fn(td.name, {}))
 
-        return StructuredTool(
+        tool = StructuredTool(
             name=td.name,
             description=td.description,
             args_schema=_EmptyArgs,
             coroutine=_call_empty,
         )
+        tool.metadata = {
+            **(tool.metadata or {}),
+            "agent_tool_spec": tool_spec_from_def(td),
+        }
+        return tool
 
     # 动态生成 Pydantic 模型
     fields: dict = {}
@@ -219,9 +293,66 @@ def _to_langchain_tool(td, call_fn) -> BaseTool:
     async def _call(**kwargs) -> str:
         return str(await call_fn(td.name, kwargs))
 
-    return StructuredTool(
+    tool = StructuredTool(
         name=td.name,
         description=td.description,
         args_schema=args_model,
         coroutine=_call,
     )
+    tool.metadata = {
+        **(tool.metadata or {}),
+        "agent_tool_spec": tool_spec_from_def(td),
+    }
+    return tool
+
+
+async def invoke_tool(
+    name: str,
+    args: dict,
+    *,
+    thread_id: str = "trusted-api",
+    roles: set[str] | None = None,
+    explicit_approval: bool = False,
+) -> str:
+    """Invoke one tool through the gateway from a trusted local API route.
+
+    ``explicit_approval`` is reserved for direct user actions such as the
+    experiment panel's Run button. Model/tool callers must use the normal
+    LangGraph interrupt flow instead.
+    """
+    from .core.approval import preapproved_tool_scope
+    from .core.execution_context import (
+        build_execution_context,
+        reset_current_execution_context,
+        set_current_execution_context,
+    )
+    from .core.policy import idempotency_key
+
+    await ensure_tools()
+    if _dispatcher is None or _tool_registry is None:
+        raise RuntimeError("tool dispatcher is unavailable")
+
+    execution_id = f"api:{uuid.uuid4().hex}"
+    ctx = build_execution_context(
+        thread_id=thread_id,
+        execution_id=execution_id,
+        roles=roles or {"user"},
+        require_initialized_tools=True,
+    )
+    spec = _tool_registry.get(name)
+    approval_keys: set[str] = set()
+    if explicit_approval and spec is not None and spec.requires_approval():
+        approval_keys.add(idempotency_key(
+            thread_id=thread_id,
+            execution_id=execution_id,
+            spec=spec,
+            args=args,
+            intent="",
+        ))
+
+    ctx_token = set_current_execution_context(ctx)
+    try:
+        with preapproved_tool_scope(approval_keys):
+            return await _dispatcher.call(name, args)
+    finally:
+        reset_current_execution_context(ctx_token)

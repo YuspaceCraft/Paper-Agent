@@ -32,6 +32,6 @@ async def add_hypothesis(topic: str = "general", body: HypothesisBody | None = N
         raise HTTPException(400, "hypothesis is required")
     result = json.loads(await study_add_hypothesis.ainvoke(
         {"topic": topic, "hypothesis": h}))
-    if not result.get("ok"):
+    if result.get("outcome") != "succeeded":
         raise HTTPException(400, result.get("error", "failed"))
     return result["data"]

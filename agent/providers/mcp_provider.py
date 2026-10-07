@@ -90,19 +90,25 @@ def write_mcp_config(servers: dict, path: str | Path | None = None) -> Path:
 
 
 async def probe_server(name: str, timeout: float = 20.0) -> dict:
-    """试连单个 MCP server，返回 {name, ok, tool_count, error}。
+    """试连单个 MCP server，返回 {name, outcome, tool_count, error}。
 
     从磁盘配置读该 server 并建立独立连接（不扰动已缓存工具表）。
     """
     cfg = load_mcp_config().get(name)
     if not cfg:
-        return {"name": name, "ok": False, "tool_count": 0, "error": "server not in .mcp.json"}
+        return {
+            "name": name, "outcome": "failed",
+            "tool_count": 0, "error": "server not in .mcp.json",
+        }
     provider = MCPProvider({name: cfg})
     try:
         tooldefs = await asyncio.wait_for(provider.list_tools(), timeout=timeout)
-        return {"name": name, "ok": True, "tool_count": len(tooldefs), "error": None}
+        return {
+            "name": name, "outcome": "succeeded",
+            "tool_count": len(tooldefs), "error": None,
+        }
     except Exception as exc:
-        return {"name": name, "ok": False, "tool_count": 0,
+        return {"name": name, "outcome": "failed", "tool_count": 0,
                 "error": f"{type(exc).__name__}: {exc}"[:300]}
     finally:
         await provider.close()
@@ -270,7 +276,7 @@ class MCPProvider(ToolProvider):
         if name not in self._tool_index:
             raise KeyError(f"MCP tool '{name}' not found")
 
-        _td, server_name = self._tool_index[name]
+        td, server_name = self._tool_index[name]
         # name 格式: "servername__toolname"，拆分回原始 tool name
         mcp_tool_name = name.split("__", 1)[1] if "__" in name else name
 
@@ -287,7 +293,12 @@ class MCPProvider(ToolProvider):
         try:
             return await _call()
         except Exception:
-            # 重连一次
+            annotations = td.annotations or {}
+            # Retry only explicitly read-only MCP tools. Side-effecting or
+            # unclassified tools are surfaced to ToolGateway, which enforces
+            # approval and non-idempotent single-attempt semantics.
+            if annotations.get("readOnlyHint") is not True:
+                raise
             if server_name in self._sessions:
                 _, stack = self._sessions.pop(server_name)
                 try:

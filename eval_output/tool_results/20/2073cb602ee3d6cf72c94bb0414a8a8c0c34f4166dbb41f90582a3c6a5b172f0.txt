@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "6131fa11813ea96e12d12c1250fc63e6",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "d32ff165e5d24019a6a7042a48b9d8cd",
+    "execution_id": "24fb38d69998480ba73658352862c5f8",
+    "thread_id": "evalqa:eval_5a576970:rag_hard_long_three_paper_synthesis",
+    "tool_name": "search_papers",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 46.999999962281436,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "e48899e8037f505096e57ed3d39679fc",
+      "sha256": "e48899e8037f505096e57ed3d39679fc71bfec79ee8950e99c0bd7d7b543b566",
+      "bytes": 6171,
+      "chars": 6171,
+      "media_type": "application/json",
+      "tool_name": "search_papers",
+      "execution_id": "24fb38d69998480ba73658352862c5f8",
+      "thread_id": "evalqa:eval_5a576970:rag_hard_long_three_paper_synthesis",
+      "created_at": "2026-09-20T01:41:53.479991+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\e4\\e48899e8037f505096e57ed3d39679fc.txt"
+    }
+  ],
+  "data": {
+    "results": [
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0038",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "V. CONCLUSION",
+        "text": "blocks. We report the captions of our method and 1-5 blocks baselines along with the ground truth. Correct sequences are in green and incorrect parts of the captions are in red.  \n<!-- image -->  \n<!-- image -->  \n<!-- image -->  \n<!-- image -->  \n<!-- image -->  \n<!-- image -->  \n<!-- image -->\n\n## V. CONCLUSION  \nIn  this  paper,  we  propose  a  novel  diffusion  model  (Diffusion-RSCC)  for  remote  sensing  image  change  captioning  to learn  the  probabilistic  distribution  of  input  through  forward noising process and reverse denoising process. In the reverse process,  a  condition  denoiser  is  designed  for  the  mean  value estimation  conditioned  on  the  bi-temporal  image  pairs.  The image  feature  extractor",
+        "score": 0.3362231459927943
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0008",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "A. Diffusion Process",
+        "text": "## II. RELATED WORK\n\n## A. Diffusion Process  \nDiffusion  probabilistic  models  emerge  as  formidable  contenders alongside convolutional neural networks (CNNs) and attention in computer vision and natural language processing. They have showcased remarkable generative power in artificial intelligence generated content.  \nThe generative  capabilities  of  diffusion  models  have  been leveraged  for  robust  feature  extraction  and  representation. Since Denoising Diffusion Probabilistic Models (DDPM) [24] firstly  introduced  diffusion  into  computer  vision,  diffusion  \nDiffusion  model  works  as  a  parameterized  Markov  chain trained using variational inference to produce samples m",
+        "score": 0.2614624548810239
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0000",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "Diffusion-RSCC: Diffusion Probabilistic Model for Change Captioning in Remote Sensing Images",
+        "text": "## Diffusion-RSCC: Diffusion Probabilistic Model for Change Captioning in Remote Sensing Images  \nXiaofei Yu, Yitong Li and Jie Ma  \n  Abstract -Remote  sensing  image  change  captioning  (RSICC) aims at generating human-like language to describe the semantic changes between bi-temporal remote sensing image pairs. It provides  valuable  insights  into  environmental  dynamics  and  land management. Unlike conventional change captioning task, RSICC involves not only retrieving relevant information across different modalities and generating fluent captions, but also mitigating the impact  of  pixel-level  differences  on  terrain  change  localization. The pixel problem due to long time span decrease",
+        "score": 0.2534590772208707
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0031",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "D. Ablation Studies",
+        "text": "Diffusion-RSCC model performs best on traditional metrics, showcasing  the  predictions' accuracy  and  similarity with ground-truth  captions,  while  it  also  excels  in  the  newly  proposed metrics, demonstrating its capability to maintain caption consistency while enhancing text diversity.\n\n## D. Ablation Studies  \nWe performed two groups of additional ablation studies to validate the effectiveness of each proposed module in Diffusion-RSCC.  We  trained  the  models  on  the  same  LEVIR-CC dataset and evaluated the model performance from two aspects: 1) models  with different sub-structures and 2) Stacking Self-attention with different numbers of self-attention blocks. The detailed descriptions are as follows:  \nTable",
+        "score": 0.2439118857223714
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0030",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "C. Quantitative Results",
+        "text": "captions and predictions from baselines versus the proposed RSCC-Diffusion model. Demonstrates RSCC-Diffusion generates captions more accurately reflecting semantic changes like construction, supporting superior performance in capturing pixel-level differences and generating fluent descriptions.]\n\n## C. Quantitative Results  \nWe  compare  the  proposed  method  Diffuison-RSCC  with previous  state-of-the-art  methods  on  the  LEVIR-CC  dataset, including DUDA [13], MCCFormers-S [57], MCCFormers-D [57],  RSICCformer  [6]  and  VARD  [16].  These  methods  are constructed on the encoder-decoder framework, in which the encoder  extracts  high-level  image  features  and  the  decoder utilizes the LSTM-based or Transformer-based blocks to g",
+        "score": 0.17530633224070474
+      }
+    ],
+    "papers": [
+      "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote"
+    ],
+    "total": 5
+  }
+}

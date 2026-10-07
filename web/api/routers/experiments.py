@@ -17,8 +17,8 @@ from agent.domains.coding import (
     _load_projects,
     _list_experiments,
     _parse_metrics,
-    run_experiment,
 )
+from agent.tools import invoke_tool
 
 router = APIRouter(prefix="/api/experiments", tags=["experiments"])
 
@@ -49,7 +49,7 @@ async def project_git(project: str, kind: str = "diff"):
     if kind == "log":
         args["n"] = 10
     result = json.loads(await fn.ainvoke(args))
-    if not result.get("ok"):
+    if result.get("outcome") != "succeeded":
         raise HTTPException(
             404 if result.get("error_type") == "param_error" else 502,
             result.get("error", "git failed"))
@@ -70,16 +70,24 @@ async def project_manifest(project: str):
     """
     from agent.domains.coding import experiment_project_state
     result = json.loads(await experiment_project_state.ainvoke({"project": project}))
-    if not result.get("ok"):
+    if result.get("outcome") != "succeeded":
         raise HTTPException(400, result.get("error", "manifest read failed"))
     return result["data"]
 
 
 @router.post("/run", status_code=202)
 async def run(body: RunExperimentBody):
-    result = json.loads(await run_experiment.ainvoke({
-        "project": body.project, "command": body.command, "name": body.name}))
-    if not result.get("ok"):
+    result = json.loads(await invoke_tool(
+        "run_experiment",
+        {
+            "project": body.project,
+            "command": body.command,
+            "name": body.name,
+        },
+        thread_id=f"experiment:{body.project}",
+        explicit_approval=True,
+    ))
+    if result.get("outcome") != "succeeded":
         raise HTTPException(400, result.get("error", "start failed"))
     return result["data"]
 

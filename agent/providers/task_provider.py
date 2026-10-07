@@ -7,6 +7,7 @@ task_provider.py — 领导-部门制监督工具（supervisor.py 的 agent 工�
   task_progress — 读状态栈（next 节点 / iteration / messages / interrupt 问题）
   task_collect  — 收产出（质量验收素材）
   task_resume   — 回复 interrupt 暂停的子任务并续跑
+  task_recover  — 接管 lease 过期的 orphaned 任务并从 checkpoint 续跑
   task_cancel   — 取消在跑任务
   task_list     — 全部派发任务快照
 """
@@ -17,7 +18,7 @@ import asyncio
 
 from ..providers import ToolDef, ToolProvider
 from ..safety import tool_allowed
-from ..tool_contract import ok as _ok_contract, err as _err_contract
+from ..tool_contract import failure as _err_contract, success as _ok_contract
 
 
 def _guard(task_id: str) -> str | None:
@@ -125,6 +126,23 @@ async def _cancel(task_id: str) -> str:
         return _err_contract("transient", f"{type(exc).__name__}: {exc}")
 
 
+async def _recover(task_id: str) -> str:
+    from ..supervisor import recover
+    g = _guard(task_id)
+    if g:
+        return _err_contract("param_error", g)
+    try:
+        started = await recover(task_id)
+        return _ok_contract({
+            "task_id": task_id,
+            "status": "recovering" if started else "already_running",
+        })
+    except ValueError as exc:
+        return _err_contract("param_error", str(exc))
+    except Exception as exc:
+        return _err_contract("transient", f"{type(exc).__name__}: {exc}")
+
+
 async def _list(kind: str = "") -> str:
     from ..supervisor import list_tasks
     try:
@@ -220,6 +238,19 @@ SUPERVISOR_TOOLDEFS = [
         annotations={"readOnlyHint": False},
     ),
     ToolDef(
+        name="task_recover",
+        description=(
+            "Recover an orphaned dispatched task whose worker lease expired "
+            "(usually after a process restart). The supervisor rebuilds the "
+            "worker graph and continues from the persisted checkpoint."
+        ),
+        parameters={"type": "object",
+                    "properties": {"task_id": {"type": "string"}},
+                    "required": ["task_id"]},
+        source="builtin",
+        annotations={"readOnlyHint": False},
+    ),
+    ToolDef(
         name="task_list",
         description=(
             "List all dispatched sub-agent tasks (newest first), optional role "
@@ -240,6 +271,7 @@ _FUNC_MAP = {
     "task_progress": _progress,
     "task_collect": _collect,
     "task_resume": _resume,
+    "task_recover": _recover,
     "task_cancel": _cancel,
     "task_list": _list,
 }
@@ -262,8 +294,9 @@ class TaskProvider(ToolProvider):
         td = self._tool_map[name]
         if td is not None and not tool_allowed(td.annotations):
             return _err_contract(
+                "permission_denied",
                 f"Action '{name}' is not authorized for the current role.",
-                error_type="permission_denied")
+            )
         fn = _FUNC_MAP[name]
         # 本 provider 的工具是普通 async fn（非 @tool），直接 await 调用。
         return await fn(**dict(arguments))

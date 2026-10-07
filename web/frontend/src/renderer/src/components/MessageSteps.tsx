@@ -5,7 +5,7 @@
  * click to expand the call's args and result. Running steps auto-expand.
  */
 
-import { type FC, useState } from 'react';
+import { type FC, useEffect, useState } from 'react';
 import type { ToolStep } from '../state';
 
 const TOOL_LABELS: Record<string, string> = {
@@ -63,11 +63,33 @@ export function labelFor(name: string): string {
 
 const ToolStepRow: FC<{ step: ToolStep; defaultExpanded?: boolean }> = ({ step, defaultExpanded }) => {
   // Default-collapsed (或配置中心「通用 → 工具步骤默认展开」): 行（状态+名称+耗时）
-  // 恒可见；args/result 展开显示。running 时自动展开。
-  const [expanded, setExpanded] = useState(!!defaultExpanded || step.status === 'running');
+  // 恒可见；args/result 展开显示。running 时自动展开，结束后回落到配置默认——
+  // 不能只用 useState 一次性初始化：组件不随 status 重挂载，running→success
+  // 后若初始化值为 true 会永远停在展开（hotfix：跟随状态迁移）。
   const running = step.status === 'running';
+  const [expanded, setExpanded] = useState(!!defaultExpanded);
+  useEffect(() => {
+    setExpanded(running ? true : !!defaultExpanded);
+  }, [running, defaultExpanded]);
   const failed = step.status === 'error';
+  const partial = step.status === 'partial';
+  const skipped = step.status === 'skipped';
+  const interrupted = step.status === 'interrupted';
   const isSubagent = step.kind === 'subagent';
+  const statusColor = failed
+    ? 'var(--color-danger)'
+    : partial || interrupted
+      ? 'var(--color-warning)'
+      : skipped
+        ? 'var(--color-text-secondary)'
+        : 'var(--color-success)';
+  const statusIcon = failed
+    ? '✗'
+    : partial || interrupted
+      ? '!'
+      : skipped
+        ? '⊘'
+        : '✓';
 
   return (
     <div style={{ marginBottom: 4 }}>
@@ -75,8 +97,8 @@ const ToolStepRow: FC<{ step: ToolStep; defaultExpanded?: boolean }> = ({ step, 
         {running ? (
           <span className="step-spinner" style={{ flexShrink: 0 }} />
         ) : (
-          <span style={{ flexShrink: 0, color: failed ? 'var(--color-danger)' : 'var(--color-success)' }}>
-            {failed ? '✗' : '✓'}
+          <span style={{ flexShrink: 0, color: statusColor }}>
+            {statusIcon}
           </span>
         )}
         {isSubagent && (
@@ -96,7 +118,7 @@ const ToolStepRow: FC<{ step: ToolStep; defaultExpanded?: boolean }> = ({ step, 
             子代理
           </span>
         )}
-        <span style={{ fontWeight: 500, color: failed ? 'var(--color-danger)' : isSubagent ? 'var(--color-primary)' : 'inherit' }}>
+        <span style={{ fontWeight: 500, color: failed || partial || interrupted ? statusColor : isSubagent ? 'var(--color-primary)' : 'inherit' }}>
           {isSubagent ? subagentLabel(step.name) : labelFor(step.name)}
         </span>
         {step.executionTime !== undefined && step.executionTime > 0 && (
@@ -130,9 +152,17 @@ const ToolStepRow: FC<{ step: ToolStep; defaultExpanded?: boolean }> = ({ step, 
           {step.result && (
             <div style={{ marginTop: step.args && Object.keys(step.args).length > 0 ? 8 : 0 }}>
               <div style={{ fontWeight: 600, opacity: 0.6, fontSize: 10, textTransform: 'uppercase', marginBottom: 2 }}>
-                {failed ? '错误' : '结果'}
+                {failed
+                  ? '错误'
+                  : partial
+                    ? '部分结果'
+                    : interrupted
+                      ? '中断信息'
+                      : skipped
+                        ? '跳过原因'
+                        : '结果'}
               </div>
-              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: failed ? 'var(--color-danger)' : 'inherit' }}>
+              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: failed ? 'var(--color-danger)' : partial || interrupted ? 'var(--color-warning)' : 'inherit' }}>
                 {step.result}
               </div>
             </div>

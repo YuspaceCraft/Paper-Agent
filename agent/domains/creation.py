@@ -19,7 +19,9 @@ creation.py — 创作领域（v10）：受控 DocStore + doc 工具。
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -43,6 +45,8 @@ def get_writing_dir() -> Path:
 
 
 _SLUG_RE = re.compile(r"[^a-z0-9-]")
+_MAX_OUTLINE_SECTIONS = 200
+_MAX_SECTION_CHARS = 200_000
 
 
 def _safe_id(value: str, default: str = "") -> str:
@@ -56,14 +60,14 @@ def _doc_dir(doc_id: str) -> Path:
 
 
 def _ok(data: dict | list) -> str:
-    from agent.tool_contract import ok as _ok_contract
-    return _ok_contract(data)
+    from agent.tool_contract import success
+    return success(data)
 
 
 def _err(error: str, error_type: str = "param_error", **ctx) -> str:
-    from agent.tool_contract import err as _err_contract
-    return _err_contract(error_type, error,
-                         next_action="Fix the arguments and retry.", **ctx)
+    from agent.tool_contract import failure
+    return failure(error_type, error,
+                   next_action="Fix the arguments and retry.", **ctx)
 
 
 # ---- DocStore（文件系统为事实源；轻量、无 Redis 依赖） ----
@@ -91,8 +95,20 @@ def _save_doc(doc: dict) -> None:
     d.mkdir(parents=True, exist_ok=True)
     (d / "sections").mkdir(parents=True, exist_ok=True)
     doc["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-    _doc_path(doc["doc_id"]).write_text(
-        json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+    target = _doc_path(doc["doc_id"])
+    fd, tmp = tempfile.mkstemp(prefix=".doc.", suffix=".tmp", dir=str(d))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(doc, handle, ensure_ascii=False, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, target)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _rebuild_markdown(doc_id: str) -> None:
@@ -208,7 +224,7 @@ async def _ensure_writing_doc(title: str, outline: list[str],
 
 @tool
 async def doc_list(status: str = "") -> str:
-    """List writing documents. Returns JSON {"ok": true, "data": {docs: [...]}}.
+    """List writing documents. Returns JSON {"outcome": "succeeded", "data": {docs: [...]}}.
     Optional status filter: outline | writing | done."""
     docs = []
     docs_dir = get_writing_dir()
@@ -231,7 +247,7 @@ async def doc_list(status: str = "") -> str:
 
 @tool
 async def doc_create(title: str) -> str:
-    """Create a blank writing document. Returns JSON {"ok": true, "data": {doc_id}}.
+    """Create a blank writing document. Returns JSON {"outcome": "succeeded", "data": {doc_id}}.
     The orchestrator normally creates the doc from the outline; use this only to
     start a fresh document before planning its chapters."""
     return _ok({"doc_id": await _ensure_writing_doc(title, [], [])})
@@ -252,8 +268,15 @@ async def doc_set_outline(doc_id: str, outline: str) -> str:
         items = json.loads(outline)
     except (ValueError, TypeError):
         return _err("outline must be a JSON array", error_type="param_error")
+    if not isinstance(items, list):
+        return _err("outline must be a JSON array", error_type="param_error")
+    if len(items) > _MAX_OUTLINE_SECTIONS:
+        return _err(
+            f"outline has too many sections (max {_MAX_OUTLINE_SECTIONS})",
+            error_type="param_error",
+        )
     parsed = []
-    for it in items if isinstance(items, list) else []:
+    for it in items:
         if not isinstance(it, dict):
             continue
         parsed.append({
@@ -274,12 +297,18 @@ async def doc_set_outline(doc_id: str, outline: str) -> str:
 async def doc_write_section(doc_id: str, section_id: str, content: str) -> str:
     """Write one section's Markdown content into a document (atomic write). The
     section must exist in the doc's outline. Marks the section done and updates
-    the document progress. Returns {"ok": true, "data": {doc_id, section_id,
+    the document progress. Returns {"outcome": "succeeded", "data": {doc_id, section_id,
     status, word_count}}."""
     sid = _safe_id(doc_id)
     ssec = _safe_id(section_id, "sec")
+    content = str(content or "")
     if not sid:
         return _err("doc_id is required", error_type="param_error")
+    if len(content) > _MAX_SECTION_CHARS:
+        return _err(
+            f"section content is too large (max {_MAX_SECTION_CHARS} chars)",
+            error_type="param_error",
+        )
     doc = _load_doc(sid)
     if not doc:
         return _err(f"doc '{doc_id}' not found (list via doc_list)", error_type="param_error")
@@ -288,7 +317,7 @@ async def doc_write_section(doc_id: str, section_id: str, content: str) -> str:
         return _err(f"section '{section_id}' not in doc outline", error_type="param_error")
     d = _doc_dir(sid)
     (d / "sections").mkdir(parents=True, exist_ok=True)
-    (d / "sections" / f"{ssec}.md").write_text(content or "", encoding="utf-8")
+    (d / "sections" / f"{ssec}.md").write_text(content, encoding="utf-8")
     doc.setdefault("sections", {})[ssec] = {
         "status": "done", "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "word_count": len((content or "").split()),
@@ -309,7 +338,7 @@ async def doc_write_section(doc_id: str, section_id: str, content: str) -> str:
 @tool
 async def doc_get_state(doc_id: str) -> str:
     """Return a document's full state — outline with per-section status, or the
-    assembled markdown. Returns JSON {"ok": true, "data": {doc_id, title,
+    assembled markdown. Returns JSON {"outcome": "succeeded", "data": {doc_id, title,
     status, outline, assembled_md}}."""
     sid = _safe_id(doc_id)
     if not sid:

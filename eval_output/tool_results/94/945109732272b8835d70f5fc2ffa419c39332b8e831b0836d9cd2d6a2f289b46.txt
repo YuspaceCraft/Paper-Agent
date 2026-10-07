@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "f6943fff23f2acbbabaa96082294d0d8",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "f98b97cce37d48fd8a52005352b63a38",
+    "execution_id": "4543b3e1f9124bf3945caa3ebe3afe96",
+    "thread_id": "eval-single-62c704",
+    "tool_name": "search_papers",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 31.000000017229468,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "91641865550b116de8015146d3fd1ec6",
+      "sha256": "91641865550b116de8015146d3fd1ec66c5b7ccefbcaaa913589302b2eacd5a4",
+      "bytes": 5259,
+      "chars": 5259,
+      "media_type": "application/json",
+      "tool_name": "search_papers",
+      "execution_id": "4543b3e1f9124bf3945caa3ebe3afe96",
+      "thread_id": "eval-single-62c704",
+      "created_at": "2026-09-19T09:02:29.130850+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\91\\91641865550b116de8015146d3fd1ec6.txt"
+    }
+  ],
+  "data": {
+    "results": [
+      {
+        "chunk_id": "clinical_notes_llm__chunk_0012",
+        "paper": "clinical_notes_llm",
+        "section": "",
+        "text": "Figure description: Visualizes the frequency distribution of clinical signs and symptoms extracted from standardized medical notes. NLP-based information extraction processes History, Examination, and Impression sections to aggregate symptom counts.",
+        "score": 0.10786702004138364
+      },
+      {
+        "chunk_id": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining__chunk_0008",
+        "paper": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining",
+        "section": "2.3. Knowledge Graph",
+        "text": "SAM [30] integrates Grounding DINO [20] with SAM to improve open-vocabulary image segmentation and extend its applicability to more controllable tasks. Inspired by these works, in this paper, we adopt SAM to analyze the given remote sensing images to better locate meaningful changed regions.\n\n## 2.3. Knowledge Graph  \nKnowledge Graphs (KGs), first introduced by Google in 2012, represent entities and relations through graph structures for knowledge organization and reasoning. With the rise of deep learning and NLP, neural models such as BiLSTM [45], CNN [16], and Transformer [39] become dominant in entity and relation extraction. Recently, large language models (LLMs) open new directions for KG construction and",
+        "score": 0.03225376608163228
+      },
+      {
+        "chunk_id": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining__chunk_0007",
+        "paper": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining",
+        "section": "2.2. Segment Anything Model",
+        "text": "noise filtering to overcome overfitting and improve model generalization. Different from these works, we propose a method that combines the SAM and a knowledge graph to identify change regions and fuse visual and semantic information, enhancing the accuracy and consistency of change descriptions.\n\n## 2.2. Segment Anything Model  \nThe Segment Anything Model (SAM) [17] is a largescale pre-trained model with strong zero-shot generalization. Inspired by the prompt strategy in NLP, SAM segments diverse targets based on various prompt types, including points, bounding boxes, masks, and text. Following SAM's release, numerous studies propose improvements and domain-specific adaptations to enhance its performance and generalization [2",
+        "score": 0.030835843562395264
+      },
+      {
+        "chunk_id": "clinical_notes_llm__chunk_0006",
+        "paper": "clinical_notes_llm",
+        "section": "III. RESULTS AND DISCUSSION",
+        "text": "notes to identify any details lost in normalization.  \nSemi-Structured Searches : Selected elements of the standardized notes were passed to the GPT-4 API to look for 'medications' in the PLAN section and to look for 'signs and symptoms' in the HISTORY, EXAMINATION, and IMPRESSION sections.\n\n## III. RESULTS AND DISCUSSION  \nWe used a large language model (GPT-4) to standardize 1618 physician notes. GPT-4 was prompted to convert a source note into a standardized note. The source note was free text in ASCII format. The standardized note was a formatted JSON object with canonical headings of HISTORY, EXAMINATION, IMPRESSION, and PLAN as well as appropriate sub-headings. GPT-4 was further prompted to correct spelling errors, expand abbreviations and ac",
+        "score": 0.028710703536638113
+      },
+      {
+        "chunk_id": "2022_chenyang_liu_remote_dataset__chunk_0008",
+        "paper": "2022_chenyang_liu_remote_dataset",
+        "section": "B. Remote Sensing Image Captioning",
+        "text": "change maps, and the discriminator distinguishes the change maps and ground-truth labels. The generator employs AGs, a spatial constraint mechanism, to locate change regions and suppress irrelevant interference. Two comprehensive surveys on the DL-based CD methods can be found in [56] and [57].\n\n## B. Remote Sensing Image Captioning  \nRS image captioning is an active research topic at the intersection of RS image processing and natural language processing (NLP). Unlike object detection and image segmentation, the image captioning task aims to understand the high-level semantic information of the visual images and describe the scenes and ground objects in language as a human.  \nFig. 8. Visualization of the attentio",
+        "score": 0.024743911757629418
+      }
+    ],
+    "papers": [
+      "clinical_notes_llm",
+      "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining",
+      "2022_chenyang_liu_remote_dataset"
+    ],
+    "total": 5
+  }
+}

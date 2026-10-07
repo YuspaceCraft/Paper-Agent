@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "65cc0fd08d8c32804f61e65bf148a5e1",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "a89da1ec9f014e3fa5da6e6c269319bf",
+    "execution_id": "fde932833fb944bf95d30e86ed378987",
+    "thread_id": "evalqa:eval_b4aed4d5:rag_medium_medium_textcaps_vs_coco",
+    "tool_name": "fetch_content",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 16.00000000325963,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "b28773bdc92d8815ced4d01c4ef56fa0",
+      "sha256": "b28773bdc92d8815ced4d01c4ef56fa0055eac2f5dd313a397679f2f75bdee45",
+      "bytes": 6181,
+      "chars": 6179,
+      "media_type": "application/json",
+      "tool_name": "fetch_content",
+      "execution_id": "fde932833fb944bf95d30e86ed378987",
+      "thread_id": "evalqa:eval_b4aed4d5:rag_medium_medium_textcaps_vs_coco",
+      "created_at": "2026-09-20T01:36:42.846518+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\b2\\b28773bdc92d8815ced4d01c4ef56fa0.txt"
+    }
+  ],
+  "data": "## 3.2 Dataset analysis  (2003.12462v2)\n2 chunk(s)\n\nmechanism contrasts direct text transcription (underlined) with inferred paraphrasing (bold) within generated captions. This supports the claim that comprehensive image description requires reasoning beyond raw OCR extraction, distinguishing it from simple VQA tasks where short answers suffice.]\n\n## 3.2 Dataset analysis  \nWe first discuss several properties of the TextCaps qualitatively and then analyse and compare its statistics to other captioning and OCR-based VQA datasets.  \nQualitative observations. Examples of our collected dataset in Fig. 2 demonstrate that our image captions combine the textual information present in the image with its natural language scene description. We asked the annotators to read and use text in the images but we did not restrict them to directly copy the text. Thus, our dataset also contains captions where OCR tokens are not present directly but were used to infer a description, e.g. in Fig. 2a 'Rice is winning' instead of 'Rice has 18 and Ecu has 17'. In a human evaluation of 640 captions we found that about 20% of images have at least one caption (8% of captions) which require more challenging reasoning or paraphrasing rather than just direct copying of visible text. Nevertheless, even the captions which require copying text directly can be complex and may require advanced reasoning as illustrated in multiple examples in Fig. 2. The collected captions are not limited to trivial template 'Object X which says Y '. We have observed various types of relations between text and other objects in a scene which are impossible to formulate without reading comprehension. For example, in Fig. 2: 'A score board shows Rice with 18 points vs. ECU with 17 points' (a), ' Box of Hydroxycut on sale for only 17.88 at a store ' (b), 'Two light switches are both in off position' (e). Dataset statistics. To situate TextCaps properly w.r.t. other image captioning datasets, we compare TextCaps with other prominent image captioning datasets, namely COCO [9], SBU [27], and Conceptual Captions [30], as well as readingoriented VQA datasets TextVQA [33], ST-VQA [6], and OCR-VQA [26].  \nFig. 3: Distribution of caption/answer lengths in Image Captioning (left) and VQA (right) datasets. VQA answers are significantly shorter than image captions and mostly concentrated within 5 words limit.  \n[FIGURE_CAPTION: Fig. 3: Distribution of caption/answer lengths in Image Captioning (left) and VQA (right) datasets. VQA answers are significantly shorter than image captions and mostly concentrated within 5 words limit.]  \nThe average caption length is 12.0 words for SBU, 9.7 words for Conceptual Captions, and 10.5 words for COCO, respectively. The average length for TextCaps is 12.4, slightly larger than the others (see Fig. 3). This can be explained by the fact that captions in TextCaps typically include both scene description as well as the text from it in one sentence, while conventional captioning dataset\n\nMeanwhile, the average answer length is 1.53 for TextVQA, 1.51 for ST-VQA and 3.31 for OCR-VQA - much smaller than the captions in our dataset. Typical answers like 'yes' , 'two' , 'coca cola' may be sufficient to answer a question but insufficient to describe the image comprehensively.\n\nFig. 4 compares the percentage of captions with a particular number of OCR tokens between COCO and TextCaps datasets. 4 TextCaps has a much larger number of OCR tokens in the captions as well as in the images compared to COCO (note the high percentage at 0). A small part (2.7%) of COCO captions which contain OCR tokens is mostly limited to one token per caption; only 0.38% of captions contain two or more tokens. Whereas in TextCaps, multi-word reading is much more common (56.8%) which is crucial for capturing real-world information ( e.g . authors, titles, monuments, etc .). Moreover, while COCO Captions contain less than 350 unique OCR tokens, TextCaps contains 39.7k of them.  \nWe also measured the frequency of OCR tokens in the captions. Fig. 5a illustrates the number of times a particular OCR token appears in the captions.  \n4 Note that OCR tokens are extracted using Rosetta OCR system [8] which cannot guarantee exhaustive coverage of all text in an image and presents just an estimation.  \n[FIGURE_CAPTION: Fig. 4: Distribution of OCR tokens in COCO and TextCaps captions (left) and images (right). In total, COCO contains 2.7% of captions and 12.7% of images with at least one OCR token, whereas TextCaps 81.3% and 96.9% .]  \nFig. 4: Distribution of OCR tokens in COCO and TextCaps captions (left) and images (right). In total, COCO contains 2.7% of captions and 12.7% of images with at least one OCR token, whereas TextCaps 81.3% and 96.9% .  \n- (a) OCR frequency distribution shows how many OCR tokens occur once, twice, etc. TextCaps has the largest amount of unique and rare ( &lt; 5) OCR tokens. Note that TextVQA has 10 answers for each question which are often identical.\n- (b) Number of switches between OCR ⇌ Vocab illustrates the technical complexity of the datasets. An approach which cannot make switches will be sufficient for most of COCO captions and TextVQA but not for TextCaps.  \n<!-- image -->  \nFig. 5: Analysis of OCR in our dataset vs. others  \nMore than 9000 tokens appear only once in the whole dataset. The curve drops rapidly after 5 occurrences and only a small part of tokens occur more than 10 times. Quantitatively, 75.7% of tokens are p"
+}

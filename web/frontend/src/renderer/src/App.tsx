@@ -12,7 +12,16 @@ import {
   loadBgTasks, saveBgTasks, parseTaskTs,
 } from './state';
 import { AppCtx } from './state/appContext';
-import { api, setBaseUrl, markProxyReady, streamNotify, openTaskStream, whenBackendReady, type Settings } from './api';
+import {
+  api,
+  setApiToken,
+  setBaseUrl,
+  markProxyReady,
+  streamNotify,
+  openTaskStream,
+  whenBackendReady,
+  type Settings,
+} from './api';
 
 import { TopBar } from './components/TopBar';
 import { LeftPanel } from './components/LeftPanel';
@@ -20,6 +29,7 @@ import { ChatView } from './components/ChatView';
 import { TaskCenter } from './components/TaskCenter';
 import { WorkspacePanel, type PanelTab } from './components/WorkspacePanel';
 import { ConfigCenter } from './components/ConfigCenter';
+import { EvaluationCenter } from './components/EvaluationCenter';
 import { StatusBar } from './components/StatusBar';
 import { type UIConfig, loadUIConfig, saveUIConfig, applyUIConfig } from './state/uiConfig';
 
@@ -47,6 +57,7 @@ const App: FC = () => {
   // 配置中心（v12）：通用配置 local 态 + 模态开关
   const [uiConfig, setUiConfig] = useState<UIConfig>(() => loadUIConfig());
   const [configOpen, setConfigOpen] = useState(false);
+  const [evaluationOpen, setEvaluationOpen] = useState(false);
 
   // 当前对话的绑定工件（SSE 归因持久化在 ThreadMeta）
   const activeThread = state.activeThreadId ? state.threads[state.activeThreadId] : null;
@@ -139,8 +150,9 @@ const App: FC = () => {
     const bridge = window.electronAPI;
     if (!bridge) return;
 
-    const onReady = (port: number) => {
+    const onReady = (port: number, token?: string) => {
       setBaseUrl(`http://127.0.0.1:${port}`);
+      if (token) setApiToken(token);
       setBackendError('');
       refreshServerInfo();
     };
@@ -153,14 +165,21 @@ const App: FC = () => {
     // mounted and subscribed). Pull-based, so nothing is missed.
     bridge.getBackendStatus().then(status => {
       if (status === 'ready') {
-        bridge.getBackendPort().then(port => { if (port) onReady(port); });
+        Promise.all([
+          bridge.getBackendPort(),
+          bridge.getBackendToken(),
+        ]).then(([port, token]) => {
+          if (port) onReady(port, token ?? undefined);
+        });
       } else if (status === 'error') {
         onError('后端启动失败，常见原因：8001 端口被残留进程占用');
       }
     });
 
     return bridge.onBackendStatus((data) => {
-      if (data.status === 'ready' && data.port) onReady(data.port);
+      if (data.status === 'ready' && data.port) {
+        onReady(data.port, data.token);
+      }
       else if (data.status === 'error') onError(data.error ?? '后端启动失败');
     });
   }, [refreshServerInfo]);
@@ -493,6 +512,7 @@ const App: FC = () => {
           apiOnline={apiOnline}
           settings={settings}
           onOpenConfig={() => setConfigOpen(true)}
+          onOpenEvaluation={() => setEvaluationOpen(true)}
         />
 
         {/* Backend startup failure (e.g. :8001 port conflict) — surface it,
@@ -562,6 +582,7 @@ const App: FC = () => {
                 }}
                 onAddMessage={msg => dispatch({ type: 'ADD_MESSAGE', message: msg })}
                 onAppendToken={(msgId, token) => dispatch({ type: 'APPEND_TOKEN', messageId: msgId, token })}
+                onReplaceMessageContent={(msgId, content) => dispatch({ type: 'REPLACE_MESSAGE_CONTENT', messageId: msgId, content })}
                 onFinishMessage={msgId => {
                   dispatch({ type: 'FINISH_MESSAGE', messageId: msgId });
                   // Refresh after agent may have downloaded/indexed papers
@@ -592,9 +613,11 @@ const App: FC = () => {
                 onPlanStep={(msgId, stepId, patch) => dispatch({ type: 'UPDATE_PLAN_STEP', messageId: msgId, stepId, patch })}
                 onPlanProgress={(msgId, done, total) => dispatch({ type: 'SET_PLAN_PROGRESS', messageId: msgId, done, total })}
                 onPlanVerify={(msgId, verdict) => dispatch({ type: 'SET_PLAN_VERIFY', messageId: msgId, verdict })}
+                onTaskStatus={(msgId, taskStatus) => dispatch({ type: 'SET_TASK_STATUS', messageId: msgId, taskStatus })}
                 onMode={(msgId, mode) => dispatch({ type: 'SET_MODE', messageId: msgId, mode })}
                 onSetStreaming={v => dispatch({ type: 'SET_STREAMING', isStreaming: v })}
                 onWorkNote={(msgId, note) => dispatch({ type: 'ADD_WORK_NOTE', messageId: msgId, note })}
+                onApproval={(msgId, approval) => dispatch({ type: 'SET_APPROVAL', messageId: msgId, approval })}
                 onThreadBinding={(threadId, binding) => {
                   if (binding.docId) dispatch({ type: 'SET_THREAD_DOC', threadId, docId: binding.docId });
                   if (binding.project) dispatch({ type: 'SET_THREAD_PROJECT', threadId, project: binding.project });
@@ -649,6 +672,10 @@ const App: FC = () => {
             config={uiConfig}
             onUiChange={updateUiConfig}
           />
+        )}
+
+        {evaluationOpen && (
+          <EvaluationCenter onClose={() => setEvaluationOpen(false)} />
         )}
       </div>
     </AppCtx.Provider>

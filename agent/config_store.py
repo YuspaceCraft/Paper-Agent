@@ -38,6 +38,9 @@ _DEFAULTS: dict = {
     "skills": {
         "disabled": [],
     },
+    "prompts": {
+        "canary": {},  # {prompt_id: {version, percent}}
+    },
 }
 
 # 测试接缝：getter 先查 override（key = 完整键路径，如 "tools.disabled"）。

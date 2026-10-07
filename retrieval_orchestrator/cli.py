@@ -205,6 +205,7 @@ def cmd_search(args):
     from indexer.config import load_config
     from indexer.vector_store import ChromaVectorStore, QdrantVectorStore
     from indexer.embedding_adapters import create_embedding_adapter
+    from retrieval import fuse_query_variants, rewrite_query
 
     cfg = load_config(args.indexer_config or "")
     vs = cfg.vector_store
@@ -214,12 +215,17 @@ def cmd_search(args):
         store = ChromaVectorStore(persist_dir=vs.chroma.persist_dir, collection_name=vs.chroma.collection_name)
 
     embedder = create_embedding_adapter(cfg.embedding)
-    vec = embedder.embed_single(args.query)
-    if vec is None:
+    variants = list(rewrite_query(args.query).variants) or [args.query]
+    result_lists = []
+    for variant in variants:
+        vec = embedder.embed_single(variant)
+        if vec is None:
+            continue
+        result_lists.append(store.search(vec, top_k=max(args.top_k, 50)))
+    if not result_lists:
         print("Error: embedding failed")
         sys.exit(1)
-
-    results = store.search(vec, top_k=args.top_k)
+    results = fuse_query_variants(result_lists, top_k=args.top_k)
     for i, r in enumerate(results):
         cid = r.get("chunk_id", "?")
         score = r.get("score", 0)

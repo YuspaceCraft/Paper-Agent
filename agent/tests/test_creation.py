@@ -96,7 +96,7 @@ def test_doc_lifecycle():
         # 不在 outline 的 section 拒绝写入
         bad = json.loads(asyncio.run(creation.doc_write_section.ainvoke(
             {"doc_id": doc_id, "section_id": "hack", "content": "x"})))
-        assert bad["ok"] is False and bad["error_type"] == "param_error"
+        assert bad["outcome"] == "failed" and bad["error_type"] == "param_error"
 
         # docx 导出 → 文件存在且 python-docx 可读回（WORKSPACE_DOCS 已隔离到 tmp）
         exp = _data(creation.doc_export_docx, {"doc_id": doc_id})
@@ -219,7 +219,7 @@ def test_executor_dispatches_creator_step():
         step = {"id": "ch-1", "description": "Write intro", "target": "creator",
                 "args": {"doc_id": "abc123", "section_id": "intro"}, "depends_on": []}
         out = asyncio.run(plan_mod._run_step(step, {}, {}))
-        assert out["ok"], out
+        assert out["outcome"] == "succeeded", out
         assert "doc_id: abc123" in calls["task"], "args must fold into the task command block"
         assert "section_id: intro" in calls["task"]
         assert out["output"].startswith("intro | 50 words"), "output is the verified status line"
@@ -247,7 +247,7 @@ def test_creator_step_fails_when_section_not_written():
         step = {"id": "ch-1", "description": "Write intro", "target": "creator",
                 "args": {"doc_id": "abc123", "section_id": "intro"}, "depends_on": []}
         out = asyncio.run(plan_mod._run_step(step, {}, {}))
-        assert out["ok"] is False, "未落盘的章节必须失败"
+        assert out["outcome"] == "failed", "未落盘的章节必须失败"
         assert "未落盘" in out["error"], out["error"]
         assert out["output"] == "", "正文内容不得进入 subagent_results"
     finally:
@@ -283,7 +283,7 @@ def _safe(uid: str) -> bool:
 def _data(fn, args: dict) -> dict:
     raw = asyncio.run(fn.ainvoke(args))
     payload = json.loads(raw)
-    assert payload.get("ok") is True, payload
+    assert payload.get("outcome") == "succeeded", payload
     return payload["data"]
 
 

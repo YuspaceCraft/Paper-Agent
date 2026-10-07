@@ -8,6 +8,7 @@
 retrieval/
  ├── sparse.py      → SparseRetriever      — TF-IDF 稀疏检索 (sklearn)
  ├── fusion.py      → rrf_fuse / weighted_fuse — RRF + 加权融合
+ ├── query_rewrite.py → 中英术语/缩写改写 + 多 query 排序融合
  ├── service.py     → RetrievalService     — 从 optimal config 加载的生产检索服务
  │                   → DenseRetriever      — 向量检索封装 (VectorStoreAdapter + EmbeddingAdapter)
  └── __init__.py    → 公开导出
@@ -20,6 +21,7 @@ retrieval/
 | TF-IDF 稀疏检索 (char_wb ngrams 2-4, max_features=10000) | sparse.py | ✅ |
 | RRF 融合 (rank-based, 免归一化) | fusion.py | ✅ |
 | Weighted 融合 (min-max 归一化 + 加权求和) | fusion.py | ✅ |
+| 查询改写 (中文术语/缩写 → 英文检索变体, 多路 RRF) | query_rewrite.py | ✅ |
 | DenseRetriever (VectorStoreAdapter + EmbeddingAdapter) | service.py | ✅ |
 | RetrievalService.from_config() (从 optimal_retrieval_config.yaml 加载) | service.py | ✅ |
 | Sparse 结果增强 (chunks_map 补全 document/metadata) | service.py | ✅ |
@@ -39,6 +41,10 @@ svc = RetrievalService.from_config(
 
 results = svc.search("dual stream feature extraction", top_k=5)
 # → [{chunk_id, score, document, metadata, ...}, ...]
+
+# 中文/缩写会自动改写成英文变体再融合，不需要调用方预处理
+results = svc.search("遥感", top_k=5)
+# → remote sensing / earth observation / satellite imagery variants
 ```
 
 ### SparseRetriever（独立使用）

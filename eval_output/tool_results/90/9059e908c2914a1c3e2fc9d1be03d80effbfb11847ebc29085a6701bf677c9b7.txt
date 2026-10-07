@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "29a1f21a326d26a426d412de08809e0a",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "8c09b0b6f9af42c6ad2525b7401f5d90",
+    "execution_id": "bf2ca6bd525a403b9995e83b6a63ead4",
+    "thread_id": "evalqa:eval_5a576970:read_hard_long_positional_encoding_compare",
+    "tool_name": "fetch_content",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 16.00000000325963,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "8310a13d612ef5afd74c8d2f5eec8baf",
+      "sha256": "8310a13d612ef5afd74c8d2f5eec8baf8a3207ca2c488cc0a1b58e1962733c65",
+      "bytes": 6179,
+      "chars": 6131,
+      "media_type": "application/json",
+      "tool_name": "fetch_content",
+      "execution_id": "bf2ca6bd525a403b9995e83b6a63ead4",
+      "thread_id": "evalqa:eval_5a576970:read_hard_long_positional_encoding_compare",
+      "created_at": "2026-09-20T02:00:17.145236+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\83\\8310a13d612ef5afd74c8d2f5eec8baf.txt"
+    }
+  ],
+  "data": "## 3 Main Results on Positional Encodings  (positional_encodings_nonessential)\n2 chunk(s)\n\nall i, j ∈ { 1 , ..., T } . We denote such M as M = .  \n✶ Positional Encodings. When positional encodings (Gehring et al., 2017; Vaswani et al., 2017) are used, a vector representing discrete position t is added to input token x t . The exact choice of PE design is irrelevant to our discussion.\n\n## 3 Main Results on Positional Encodings  \nThe goal of this short review is to provide a summary of results on the (non)necessity of positional encodings for different Transformer model variations with comprehensible explanations, and to discuss the original references (Sec. 5).  \nDefinitions. We first define two key properties: (1) A sequence processor f : R d × T → R d × T is said to be permutation invariant when for any input X ∈ R d × T , and its arbitrary permutation along the time/token axis X ′ ∈ R d × T , f ( X ) = f ( X ′ ) .  \n̸  \n(2) f is fully position-sensitive when for any inputs X , X ′ ∈ R d × T , if X i = X ′ i , then f ( X ) j = f ( X ′ ) j for all j ∈ { i, ..., T } ; meaning that as soon as one input is different at position i , f produces different outputs at all the 'future' positions j ≥ i .  \n̸  \nThe necessity of using explicit PEs is tied to the model's capability to distinguish between permutated sequences 2 , which can be characterized using the definitions above. (1) If a sequence processor f is permutation invariant , positional encodings are needed. (2) If f is fully position-sensitive , positional encodings are not needed. (3, Remark) As we will see, strictly speaking, being permutation non-invariant alone is not enough to conclude on the non-necessity of positional encodings (as all positions matters); therefore, we additonally introduce the property of being fully position-sensitive .  \nWe present the main results in the form of question/answer pairs as follows.  \nQuestion 1 (Back to basics) . Why are positional encodings needed for non-autoregressive Transformers?  \nThis is because non-autoregressive self-attention is permutation invariant , i.e., for any input X , and its arbitrary permutation along the time/token axis X ′ , SelfAttn( X , ) = SelfAttn( X ′ , ) .  \n✶ ✶ We can straightforwardly check this by directly looking at Eqs. 5-6. Without the mask, i.e., M = ✶ , keys and queries from all positions interact regardless of their positions to yield attention scores (i.e., softmax( K ⊤ Q ) ∈ R T × T in Eq. 6), which are used to compute weighted average, which is commutative, of values.  \n2 Once it is clear that the model can distinguish between permuted sequences, there is no reason to introduce extra explicit PEs. A common wisdom is to let the model learn to use the positional signals on its own. For example, it is rather unnatural to add extra PEs to recurrent neural networks (RNNs).  \nQuestion 2 (Knowledge Bias) . Why are positional encodings believed to be crucial for Transformers by 'default' in the first place?  \nThis is partly because the standalone self\n\nthe autoregressive self-attention also requires positional encodings (we emphasize that this is not true).  \nQuestion 3. Why are positional encodings nonessential for multi-layer autoregressive Transformers?  \nThis is because multi-layer autoregressive Transformers are fully position-sensitive .\n\nQuestion 3. Why are positional encodings nonessential for multi-layer autoregressive Transformers?  \nThis is because multi-layer autoregressive Transformers are fully position-sensitive .  \nA simple method to check this is to compare the model outputs when we feed two sequences that are permutations of each other. While we could also provide a mathematical proof here, this can better be visualized as in Figure 1: even for this extreme case where we feed two sequences that only differ from each other by a permutation of their two first tokens, the multi-layer model sees different contexts at all positions at the top layer. Essentially, we can build a sequence processor by cascading multiple set processors.  \nQuestion 4. Does the multi-layer autoregressive Transformer language models effectively learn to use positional signals in practice?  \nFor this question, we refer to Irie et al. (2019) which demonstrated good general performance of multi-layer autoregressive Transformer language models without PEs and provided visualization of attention weights (see figures in Irie et al. (2019)). They reported that, interestingly, the first attention layer mainly attends to the new input, while the second layer uniformly attends to the context. Uniform attention in early layers is intuitively good as it allows the model to grasp all the available context, which is crucial to distinguish similar sequences (as illustrated in Figure 1).  \nFinally, being non-essential does not imply that some sophisticated extra positional encodings may not improve Transformer language models, we discuss corresponding references in Sec. 5.  \nQuestion 5. Why are positional encodings needed for one-layer autoregressive self-attention?  \nThis is also well illustrated in Figure 1 by looking at the first layer. Depending on the specific permutation, one-layer model's outputs at some positions are sensitive to the input permutation, but the output at the last position (when the entire sequence is seen) is the same for any permutations; implying that they are not fully position-sensitive ."
+}

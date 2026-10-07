@@ -23,8 +23,12 @@ build/
 
 # Agent checkpoint database (LangGraph SqliteSaver)
 checkpoints.db*
+# Durable tool-call idempotency state
+tool_idempotency.db*
 # 领导-部门制任务舱元数据（AsyncSqliteStore）
 task_store.db*
+# 评测端 trace 结构化存储（Agent 评测体系，运行时数据）
+trace_store.db*
 
 # Runtime workspace config & generated docs (machine-local)
 web/workspace/settings.json
@@ -46,6 +50,9 @@ web/frontend/dist/
 # Local caches
 .demo/
 .cache/
+
+# Content-addressed oversized tool results (runtime data)
+outputs/artifacts/
 
 # OS
 .DS_Store

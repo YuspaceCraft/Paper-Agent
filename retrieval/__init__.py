@@ -12,4 +12,10 @@ retrieval — 共享检索层
 """
 from .sparse import SparseRetriever
 from .fusion import rrf_fuse, weighted_fuse
+from .query_rewrite import (
+    QueryRewrite,
+    build_search_query,
+    fuse_query_variants,
+    rewrite_query,
+)
 from .service import RetrievalService, DenseRetriever

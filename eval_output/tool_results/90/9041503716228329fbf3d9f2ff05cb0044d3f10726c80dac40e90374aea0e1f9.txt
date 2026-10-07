@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "09d5e21e889cb357d3c534e947fcc8e3",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "7b22e0e2724b4305a793f20a880deeb6",
+    "execution_id": "f2fb5dfe8d0e4975be608182f9905a5b",
+    "thread_id": "evalqa:eval_24fa667d:qa_42710cf3",
+    "tool_name": "search_papers",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 16.00000000325963,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "3fbc5335c1597489ab411d9a50f013d0",
+      "sha256": "3fbc5335c1597489ab411d9a50f013d06c01fc99a108aec1837c6471af6cd3e6",
+      "bytes": 4620,
+      "chars": 4620,
+      "media_type": "application/json",
+      "tool_name": "search_papers",
+      "execution_id": "f2fb5dfe8d0e4975be608182f9905a5b",
+      "thread_id": "evalqa:eval_24fa667d:qa_42710cf3",
+      "created_at": "2026-09-19T14:02:41.461962+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\3f\\3fbc5335c1597489ab411d9a50f013d0.txt"
+    }
+  ],
+  "data": {
+    "results": [
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0017",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "D. Comparisons",
+        "text": "the model, and their combined effect leads to significant improvements across all evaluated metrics. The ablation study not only highlights the importance of each individual module but also underscores the potential for further performance gains through the strategic combination of these modules.\n\n## D. Comparisons  \nA comparative analysis is conducted between the proposed method and several state-of-the-art (SOTA) approaches, including DUDA [30], MCCFormers [31], RSICCformer [16], Chg2Cap [20], SEN [32], ICT-Net [33], MAF-Net [34], and RSCaMa [35].  \n1) Comparisons on the LEVIR-CC Dataset: A comprehensive evaluation of the CTM's performance on the LEVIR-CC dataset was conducted. As shown in Table IV, CTM demonstrates exceptional performa",
+        "score": 0.17331534180340388
+      },
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0021",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "",
+        "text": "Figure description: This figure quantifies the impact of backbone selection on the Cross-Temporal Model (CTM) for remote sensing image change captioning. By benchmarking METEOR, ROUGE, and CIDEr metrics across ResNet, BERT, and CLIP variants, it isolates the contribution of visual feature extractors.",
+        "score": 0.1424861039914966
+      },
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0018",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "",
+        "text": "Figure description: This figure quantifies the impact of backbone selection on the Cross-Temporal Model (CTM) for remote sensing image change captioning. By benchmarking METEOR, ROUGE, and CIDEr metrics across ResNet, BERT, and CLIP variants, it isolates the contribution of visual feature extractors.",
+        "score": 0.1424861039914966
+      },
+      {
+        "chunk_id": "clinical_notes_llm__chunk_0016",
+        "paper": "clinical_notes_llm",
+        "section": "IV. CONCLUSIONS",
+        "text": "The dataset was limited to 1618 physician notes from a neurology clinic, primarily with a diagnosis of multiple sclerosis. It is desirable to generalize these findings to a larger corpus of notes, with more diverse diagnoses, with different note types, and from varied clinical settings.\n\n## IV. CONCLUSIONS  \nNote standardization using large language models offers a promising approach that enhances the readability, usability, quality, and interoperability of physician notes. Large language models excel at improving note structure, expanding abbreviations, replacing slang and jargon with standardized terminology, and correcting spelling and grammatical errors while preserving clinical content and clinician intent. By standardizing clinical n",
+        "score": 0.09781221663918607
+      },
+      {
+        "chunk_id": "clinical_notes_llm__chunk_0014",
+        "paper": "clinical_notes_llm",
+        "section": "III. RESULTS AND DISCUSSION",
+        "text": "This study has several limitations. The dataset was limited to 1618 physician notes from a neurology clinic, primarily with a diagnosis of multiple sclerosis. It is desirable to generalize these findings to a larger corpus of notes, with more diverse diagnoses, with different note types, and from varied clinical settings.  \nAs pr",
+        "score": 0.08253130757286439
+      }
+    ],
+    "papers": [
+      "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+      "clinical_notes_llm"
+    ],
+    "total": 5
+  }
+}

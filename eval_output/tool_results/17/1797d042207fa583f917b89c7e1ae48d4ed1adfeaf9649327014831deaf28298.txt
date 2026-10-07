@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "e72d46adc4baae3403292fdf34dcad69",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "7b22e0e2724b4305a793f20a880deeb6",
+    "execution_id": "f2fb5dfe8d0e4975be608182f9905a5b",
+    "thread_id": "evalqa:eval_24fa667d:qa_42710cf3",
+    "tool_name": "fetch_content",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 16.00000000325963,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "6626005bf0a45a5fa45b9ee9dd932cee",
+      "sha256": "6626005bf0a45a5fa45b9ee9dd932cee4a12ccbf154d2d9bda635002b06aac63",
+      "bytes": 5746,
+      "chars": 5744,
+      "media_type": "application/json",
+      "tool_name": "fetch_content",
+      "execution_id": "f2fb5dfe8d0e4975be608182f9905a5b",
+      "thread_id": "evalqa:eval_24fa667d:qa_42710cf3",
+      "created_at": "2026-09-19T14:02:52.214742+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\66\\6626005bf0a45a5fa45b9ee9dd932cee.txt"
+    }
+  ],
+  "data": "## D. Comparisons  (Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and)\n2 chunk(s)\n\nthe model, and their combined effect leads to significant improvements across all evaluated metrics. The ablation study not only highlights the importance of each individual module but also underscores the potential for further performance gains through the strategic combination of these modules.\n\n## D. Comparisons  \nA comparative analysis is conducted between the proposed method and several state-of-the-art (SOTA) approaches, including DUDA [30], MCCFormers [31], RSICCformer [16], Chg2Cap [20], SEN [32], ICT-Net [33], MAF-Net [34], and RSCaMa [35].  \n1) Comparisons on the LEVIR-CC Dataset: A comprehensive evaluation of the CTM's performance on the LEVIR-CC dataset was conducted. As shown in Table IV, CTM demonstrates exceptional performance, achieving an 86.78 BLEU-1, a 79.24 BLEU-2, a 72.65 BLEU-3, a 65.48 BLEU-4, a 40.63  \nTABLE IV COMPARISON WITH OTHER METHODS ON THE LEVIR-CC  \nTABLE V CTM WITH BACKBONES ON THE LEVIR-CC IN TERMS OF BLEU  \nMETEOR,a75.72ROUGE,anda138.78CIDEr.Notably,CTM outperforms all comparative methods across all evaluation metrics except for BLEU-4. These results highlight the effectiveness of CTM in generating high-quality captions for remote sensing imagery. The consistently strong performance across multiple metrics indicates that CTM is capable of producing captions that are not only accurate and fluent, but also contextually appropriate and semantically meaningful. This is particularly valuable for RSI captioning, where the precise interpretation of complex visual content is essential. The fluctuation range for the aforementioned experimental values is ±0.5.  \nMoreover, a comparative experiment was conducted by replacing the feature extraction backbone of CTM with various models, including ResNet50 [36], ResNet101 [36], ResNet152 [36], BERT [37], CLIP [38], and Pretrained-CLIP. It should be noted that the results presented in Table IV were obtained using a specific backbone configuration. As shown in Table V and Fig. 7, ResNet50, ResNet101, ResNet152, BERT, and CLIP yielded comparable performance levels, with results falling within a similar range. However, when the Pretrained- CLIP backbone was employed, CTM achieved a CIDEr score of 139.56 and a BLEU-4 of 66.21, thereby slightly outperforming the other configurations. These highlight that selecting an appropriate feature extraction backbone can enhance the performance of CTM. While several backbones demonstrate comparable capabilities, the pretrained CLIP backbone emerges as a superior choice, offering a notable improvement in both CIDEr and BLEU-4 scores. The pretrained CLIP model maps images and text into the same semantic space through contrastive learning, enabling it to comprehend information from both image and text modalities simultaneously. This capability allows CLIP to better capture visual relationships within images and align them with semantic information in textual descriptions when handling the task o\n\nFig. 8. Visualization of captioning comparing with others on the LEVIR-CC.  \nFig. 9. Visualization of change captioning attention map.  \n<!-- image -->  \nUltimately, the results of RSI change description are presented in a visual format, as illustrated in Figs. 8 and 9. Upon examining the figure, it is evident that CTM is capable of accurately  \nTABLE VI COMPARE CTM TO OTHER MODELS ON THE WHU-CDC  \ndescribing adjectives and quantifiers such as 'massive' and 'a ring of.' Moreover, CTM effectively mitigates the interference caused by varying lighting conditions across multiple temporal phases, enabling it to distinguish between actual changes and pseudo-changes with precision. From the visual results, CTM outperforms both RSICCformer and ICT-Net in terms of performance. The ability of CTM to handle complex linguistic constructs. This is crucial for generating detailed and meaningful descriptions that can convey the full context of the observed changes. Furthermore, CTM's robustness in dealing with lighting variations and its ability to discern true changes from pseudo-changes highlight its practical utility in real-world scenarios.  \n2) Comparisons on the WHU-CDC Dataset: An extended evaluation was performed on the WHU-CDC dataset, with the CTMTNet method [25] additionally introduced as a comparative benchmark. The experiments are in Table VI, from which we can see CTM achieves 85.36 BLEU-1 score, 79.49 BLEU-2 score, 75.36 BLEU-3 score, 72.36 BLEU-4 score, 46.98 METEOR score, 80.97 ROUGE score, and 153.29 CIDEr score on this dataset. These experiments conclude the effectiveness of CTM on the WHU-CDC, and further confirm its stability. Compared with the CTMTNet method, CTM performs well on all evaluation indicators, especially on key indicators such as BLEU and CIDEr. Fig. 10 shows that CTM can more accurately capture the key when generating the description, and generate more fluent and natural text description. The fluctuation range for the aforementioned experimental values is ±"
+}

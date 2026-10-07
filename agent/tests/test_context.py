@@ -26,7 +26,9 @@ def _setup(tmp_root: Path):
 
 def _tool_result(name: str, data: dict) -> ToolMessage:
     return ToolMessage(
-        content=json.dumps({"ok": True, "data": data}, ensure_ascii=False),
+        content=json.dumps(
+            {"outcome": "succeeded", "data": data}, ensure_ascii=False
+        ),
         tool_call_id=f"call-{name}", name=name,
     )
 

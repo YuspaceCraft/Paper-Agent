@@ -1,0 +1,86 @@
+{
+  "ok": true,
+  "data": {
+    "results": [
+      {
+        "chunk_id": "clinical_notes_llm__chunk_0012",
+        "paper": "clinical_notes_llm",
+        "section": "",
+        "text": "Figure description: Visualizes the frequency distribution of clinical signs and symptoms extracted from standardized medical notes. NLP-based information extraction processes History, Examination, and Impression sections to aggregate symptom counts.",
+        "score": 0.10786702004138364
+      },
+      {
+        "chunk_id": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining__chunk_0008",
+        "paper": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining",
+        "section": "2.3. Knowledge Graph",
+        "text": "SAM [30] integrates Grounding DINO [20] with SAM to improve open-vocabulary image segmentation and extend its applicability to more controllable tasks. Inspired by these works, in this paper, we adopt SAM to analyze the given remote sensing images to better locate meaningful changed regions.\n\n## 2.3. Knowledge Graph  \nKnowledge Graphs (KGs), first introduced by Google in 2012, represent entities and relations through graph structures for knowledge organization and reasoning. With the rise of deep learning and NLP, neural models such as BiLSTM [45], CNN [16], and Transformer [39] become dominant in entity and relation extraction. Recently, large language models (LLMs) open new directions for KG construction and",
+        "score": 0.03225376608163228
+      },
+      {
+        "chunk_id": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining__chunk_0007",
+        "paper": "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining",
+        "section": "2.2. Segment Anything Model",
+        "text": "noise filtering to overcome overfitting and improve model generalization. Different from these works, we propose a method that combines the SAM and a knowledge graph to identify change regions and fuse visual and semantic information, enhancing the accuracy and consistency of change descriptions.\n\n## 2.2. Segment Anything Model  \nThe Segment Anything Model (SAM) [17] is a largescale pre-trained model with strong zero-shot generalization. Inspired by the prompt strategy in NLP, SAM segments diverse targets based on various prompt types, including points, bounding boxes, masks, and text. Following SAM's release, numerous studies propose improvements and domain-specific adaptations to enhance its performance and generalization [2",
+        "score": 0.030835843562395264
+      },
+      {
+        "chunk_id": "clinical_notes_llm__chunk_0006",
+        "paper": "clinical_notes_llm",
+        "section": "III. RESULTS AND DISCUSSION",
+        "text": "notes to identify any details lost in normalization.  \nSemi-Structured Searches : Selected elements of the standardized notes were passed to the GPT-4 API to look for 'medications' in the PLAN section and to look for 'signs and symptoms' in the HISTORY, EXAMINATION, and IMPRESSION sections.\n\n## III. RESULTS AND DISCUSSION  \nWe used a large language model (GPT-4) to standardize 1618 physician notes. GPT-4 was prompted to convert a source note into a standardized note. The source note was free text in ASCII format. The standardized note was a formatted JSON object with canonical headings of HISTORY, EXAMINATION, IMPRESSION, and PLAN as well as appropriate sub-headings. GPT-4 was further prompted to correct spelling errors, expand abbreviations and ac",
+        "score": 0.028710703536638113
+      },
+      {
+        "chunk_id": "2022_chenyang_liu_remote_dataset__chunk_0008",
+        "paper": "2022_chenyang_liu_remote_dataset",
+        "section": "B. Remote Sensing Image Captioning",
+        "text": "change maps, and the discriminator distinguishes the change maps and ground-truth labels. The generator employs AGs, a spatial constraint mechanism, to locate change regions and suppress irrelevant interference. Two comprehensive surveys on the DL-based CD methods can be found in [56] and [57].\n\n## B. Remote Sensing Image Captioning  \nRS image captioning is an active research topic at the intersection of RS image processing and natural language processing (NLP). Unlike object detection and image segmentation, the image captioning task aims to understand the high-level semantic information of the visual images and describe the scenes and ground objects in language as a human.  \nFig. 8. Visualization of the attentio",
+        "score": 0.024743911757629418
+      },
+      {
+        "chunk_id": "CCExpert__chunk_0008",
+        "paper": "CCExpert",
+        "section": "B. Remote Sensing Image Change Caption",
+        "text": "[41] leverages a robust base model, dynamic resolution mechanisms, and multimodal rotational position embeddings to process images of varying resolutions dynamically. This approach effectively integrates spatial information from text, images, and video, achieving exceptional performance metrics.\n\n## B. Remote Sensing Image Change Caption  \nImage change captioning lies at the intersection of computer vision and natural language processing (NLP) and has attracted significant attention in recent years. This section briefly reviews progress in this area within computer vision and remote sensing.  \nJhamtani et al.[42] were the first to introduce a dataset and model for image c",
+        "score": 0.023791778536839024
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0016",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "B. The Reverse Diffusion Process",
+        "text": "weights.  \nwhere  the  parameters  of  embedding  function ( ) Emb  and rounding function 0 ( | ) p x  w can be trained in 0 L , round L , T L .  \nAs shown  in (12), assuming that -1 , ( | , ) t t bef aft p x x I I  is Gaussian distribution, the form of -1 , ( | , ) t t bef aft p x x I I  can be:\n\nwhere  the  parameters  of  embedding  function ( ) Emb  and rounding function 0 ( | ) p x  w can be trained in 0 L , round L , T L .  \nAs shown  in (12), assuming that -1 , ( | , ) t t bef aft p x x I I  is Gaussian distribution, the form of -1 , ( | , ) t t bef aft p x x I I  can be:  \nDefines a Gaussian distribution for a latent variable or state transition at time step t, parameterized by a mean function of before and after state represe",
+        "score": 0.022114058252250046
+      },
+      {
+        "chunk_id": "clinical_notes_llm__chunk_0009",
+        "paper": "clinical_notes_llm",
+        "section": "III. RESULTS AND DISCUSSION",
+        "text": "is 'feeling blue' → 'symptoms of depression'  \n[FIGURE_CAPTION: Fig. 4. Slang, Jargon, and Non-Standard Terms. GPT-4 identified and corrected a mean of 3 . 1 ± 3 . 0 non-standard terms per note. An example of a non-standard term substitution is 'feeling blue' → 'symptoms of depression']\n\n[FIGURE_CAPTION: Fig. 4. Slang, Jargon, and Non-Standard Terms. GPT-4 identified and corrected a mean of 3 . 1 ± 3 . 0 non-standard terms per note. An example of a non-standard term substitution is 'feeling blue' → 'symptoms of depression']  \nWhile large language models offer promising solutions to some challenges in the usability and quality of clinical notes, significant systemic issues remain beyond their current capabilities. One persistent prob",
+        "score": 0.020100074451587454
+      },
+      {
+        "chunk_id": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing__chunk_0011",
+        "paper": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing",
+        "section": "A. Denoising Diffusion Models",
+        "text": "introduce the preliminaries of diffusion models using DDPM as an example. Then, we will detail the entire implementation process in the mask approximation phase, including the specific design of MaskApproxNet and the frequency noise filter. Finally, we will elaborate the text decoding process.\n\n## A. Denoising Diffusion Models  \nDiffusion models operate by defining a forward Markov process that gradually transforms data into noise and a reverse process that reconstructs data from noise. Formally, given an initial data distribution x 0 ∼ q ( x 0 ) , the forward process generates a sequence of variables x 1 , x 2 , . . . , x T using a transition kernel q ( x t | x t -1 ) . By applying the Markov property and the chain rule, the joint di",
+        "score": 0.019832057395675104
+      },
+      {
+        "chunk_id": "clinical_notes_llm__chunk_0004",
+        "paper": "clinical_notes_llm",
+        "section": "II. METHODS",
+        "text": "|   4.74 | 0.56 |\n| Terminology Standardization |   4.81 | 0.52 |\n| Completeness                |   4.04 | 0.53 |\n\n- 1 Quality ratings are based on a 5-point Likert scale, where 5 represents the highest quality.\n- 2 Metrics were a consensus of a human expert and GPT-4.  \n3 SD = Standard Deviation.\n\n## II. METHODS  \nThis study explores the application of GPT-4 to standardize 1618 de-identified clinical notes from a Neurology Clinic. We hypothesized that standardization can effectively improve the structure, clarity, and usability of physician notes while supporting downstream integration into alternative data formats. Our aim was to standardize a corpus of physician notes containing grammatical errors, spelling",
+        "score": 0.019386897845324203
+      }
+    ],
+    "papers": [
+      "clinical_notes_llm",
+      "SAM_Guided_Semantic_and_Motion_Changed_Region_Mining",
+      "2022_chenyang_liu_remote_dataset",
+      "CCExpert",
+      "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+      "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing"
+    ],
+    "total": 10
+  }
+}

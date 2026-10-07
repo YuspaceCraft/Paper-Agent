@@ -30,6 +30,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -44,6 +45,8 @@ from . import manifest as project_manifest
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 _SLUG_RE = __import__("re").compile(r"[^a-zA-Z0-9_.-]+")
+_MAX_RUNNING_EXPERIMENTS = int(os.getenv("AGENT_MAX_RUNNING_EXPERIMENTS", "4"))
+_MAX_LOG_BYTES = int(os.getenv("AGENT_MAX_EXPERIMENT_LOG_BYTES", "5000000"))
 
 
 def _experiments_root() -> Path:
@@ -61,14 +64,14 @@ def _runs_dir() -> Path:
 
 
 def _ok(data: dict | list) -> str:
-    from agent.tool_contract import ok as _ok_contract
-    return _ok_contract(data)
+    from agent.tool_contract import success
+    return success(data)
 
 
 def _err(error: str, error_type: str = "param_error", **ctx) -> str:
-    from agent.tool_contract import err as _err_contract
-    return _err_contract(error_type, error,
-                         next_action="Fix the arguments and retry.", **ctx)
+    from agent.tool_contract import failure
+    return failure(error_type, error,
+                   next_action="Fix the arguments and retry.", **ctx)
 
 
 # ---- path safety ----
@@ -81,11 +84,19 @@ def _project_dir(project: str) -> Path:
     """experiments 项目目录（安全 slug）。路径必须落在实验根内。"""
     root = _experiments_root()
     d = (root / _safe_project(project)).resolve()
+    if d == root.resolve():
+        raise PermissionError("project must name a child of experiments root")
     try:
         d.relative_to(root.resolve())
     except ValueError:
         raise PermissionError(f"project escapes experiments root: {project}")
     return d
+
+
+def _safe_topic(topic: str) -> str:
+    """Study topics are directory names, never path segments such as '.'/'..'."""
+    slug = _SLUG_RE.sub("_", (topic or "general").strip()).strip("._")
+    return slug or "general"
 
 
 def _exp_dir(exp_id: str) -> Path:
@@ -195,6 +206,7 @@ def _parse_metrics(exp: dict) -> dict:
 # ---- run_experiment（后台子进程） ----
 
 _bg_tasks: set[asyncio.Task] = set()
+_starting_experiments = 0
 
 
 async def _watch(exp: dict, proc: asyncio.subprocess.Process) -> None:
@@ -202,14 +214,26 @@ async def _watch(exp: dict, proc: asyncio.subprocess.Process) -> None:
     from ..observability import log_event
 
     logf = _exp_dir(exp["exp_id"]) / "run.log"
+    written = 0
+    capped = False
     try:
         if proc.stdout is not None:
-            while True:
-                chunk = await proc.stdout.read(4096)
-                if not chunk:
-                    break
-                with open(logf, "ab") as f:
-                    f.write(chunk)
+            with open(logf, "ab") as handle:
+                while True:
+                    chunk = await proc.stdout.read(4096)
+                    if not chunk:
+                        break
+                    remaining = max(0, _MAX_LOG_BYTES - written)
+                    if remaining:
+                        out = chunk[:remaining]
+                        handle.write(out)
+                        written += len(out)
+                    if len(chunk) > remaining and not capped:
+                        handle.write(
+                            f"\n[log capped at {_MAX_LOG_BYTES} bytes]\n"
+                            .encode("utf-8")
+                        )
+                        capped = True
     except Exception:
         pass
     rc = await proc.wait()
@@ -252,8 +276,20 @@ def _archive_metrics(state: dict) -> None:
 def _save_state(state: dict) -> None:
     d = _exp_dir(state["exp_id"])
     d.mkdir(parents=True, exist_ok=True)
-    (d / "state.json").write_text(json.dumps(state, ensure_ascii=False, indent=2),
-                                  encoding="utf-8")
+    target = d / "state.json"
+    fd, tmp = tempfile.mkstemp(prefix=".state.", suffix=".tmp", dir=str(d))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(state, handle, ensure_ascii=False, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, target)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 async def _spawn(exp: dict) -> None:
@@ -286,30 +322,43 @@ async def _spawn(exp: dict) -> None:
 # ---- study knowledge base（确定性写入 / 只读引用） ----
 
 def _study_path(topic: str) -> Path:
-    return _study_root() / _SLUG_RE.sub("_", (topic or "general").strip()) / "knowledge.json"
+    return _study_root() / _safe_topic(topic) / "knowledge.json"
 
 
 def load_study(topic: str) -> dict:
     p = _study_path(topic)
+    safe_topic = _safe_topic(topic)
     if not p.exists():
-        return {"topic": _SLUG_RE.sub("_", (topic or "general").strip()),
+        return {"topic": safe_topic,
                 "hypotheses": [], "experiments": [], "findings": []}
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
-        return {**data, "topic": _SLUG_RE.sub("_", (topic or "general").strip())}
+        return {**data, "topic": safe_topic}
     except (ValueError, OSError):
-        return {"topic": topic, "hypotheses": [], "experiments": [], "findings": []}
+        return {"topic": safe_topic, "hypotheses": [], "experiments": [], "findings": []}
 
 
 def _save_study(topic: str, data: dict) -> None:
     p = _study_path(topic)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    fd, tmp = tempfile.mkstemp(prefix=".knowledge.", suffix=".tmp", dir=str(p.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(data, handle, ensure_ascii=False, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, p)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _study_archive(exp: dict) -> None:
     """实验结束 → 确定性归档到研究知识库（agent 不直接写，防 LLM 篡改事实）。"""
-    topic = _SLUG_RE.sub("_", (exp.get("project", "general") or "general").strip())
+    topic = _safe_topic(exp.get("project", "general"))
     study = load_study(topic)
     rec = {
         "exp_id": exp["exp_id"],
@@ -355,11 +404,26 @@ async def run_experiment(project: str, command: str, name: str = "") -> str:
     The project folder receives the configured experiments root / {project}
     (created if missing). Logs stream to runs/<exp_id>/run.log; a metrics.json/metrics.csv
     written by the command is parsed automatically on completion. Returns
-    {"ok": true, "data": {exp_id, status: "running"}} — poll experiment_status.
+    {"outcome": "succeeded", "data": {exp_id, status: "running"}} — poll experiment_status.
     Updates the project manifest (project.json) — status/last_run 同步。"""
+    global _starting_experiments
+    active = _starting_experiments + sum(
+        1 for task in _bg_tasks if not task.done()
+    )
+    if active >= max(1, _MAX_RUNNING_EXPERIMENTS):
+        return _err(
+            f"too many running experiments ({active}/{_MAX_RUNNING_EXPERIMENTS}); "
+            "wait for one to finish",
+            error_type="transient",
+            max_running=_MAX_RUNNING_EXPERIMENTS,
+        )
     exp_id = uuid.uuid4().hex[:10]
     now = time.strftime("%Y-%m-%dT%H:%M:%S")
     slug = _safe_project(project)
+    try:
+        _project_dir(slug)
+    except PermissionError as exc:
+        return _err(str(exc), error_type="param_error")
     exp = {
         "exp_id": exp_id,
         "project": slug,
@@ -376,7 +440,11 @@ async def run_experiment(project: str, command: str, name: str = "") -> str:
     project_manifest.ensure_manifest(slug)
     project_manifest.update_manifest(slug, status="running", last_run=exp_id)
     project_manifest.log_event(slug, "experiment_start", f"{exp['name']} ({exp_id})")
-    await _spawn(exp)
+    _starting_experiments += 1
+    try:
+        await _spawn(exp)
+    finally:
+        _starting_experiments -= 1
     _emit_experiment({"type": "experiment", "exp_id": exp_id,
                       "project": slug, "name": exp["name"],
                       "command": command, "status": "running"})
@@ -489,7 +557,7 @@ async def delegate_code_task(project: str, prompt: str, timeout: int = 600) -> s
     The delegate edits/writes files directly in the project folder and returns
     a summary — the parent then inspects changes via git_diff. External model
     choice is injected by the backend; the prompt itself must be self-contained.
-    Returns {"ok": true, "data": {backend, output, changed_files}}."""
+    Returns {"outcome": "succeeded", "data": {backend, output, changed_files}}."""
     cwd = _project_dir(project)
     cwd.mkdir(parents=True, exist_ok=True)
 
@@ -604,19 +672,23 @@ async def study_context(topic: str) -> str:
         )
     return _ok({
         "topic": study.get("topic", topic),
-        "hypotheses": study.get("hypotheses", []),
+        "hypotheses": study.get("hypotheses", [])[-20:],
         "recent_experiments": exp_summary,
-        "findings": study.get("findings", []),
+        "findings": study.get("findings", [])[-20:],
     })
 
 
 @tool
 async def study_add_hypothesis(topic: str, hypothesis: str) -> str:
     """Record a research hypothesis (append-only) into the study knowledge base."""
+    hypothesis = str(hypothesis or "").strip()[:2000]
+    if not hypothesis:
+        return _err("hypothesis is required", error_type="param_error")
     study = load_study(topic)
     study.setdefault("hypotheses", []).append({
         "text": hypothesis, "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     })
+    study["hypotheses"] = study["hypotheses"][-500:]
     _save_study(topic, study)
     return _ok({"topic": study.get("topic"), "n_hypotheses": len(study["hypotheses"])})
 
@@ -631,9 +703,12 @@ async def set_experiment_project(project: str, paper: str = "",
     folder + project.json if missing; records the related paper / entry run
     command / description. Call whenever the user names a project or a coder run
     establishes one (文献→实验连通的关键动作). Returns
-    {"ok": true, "data": {project, bound, manifest}}."""
+    {"outcome": "succeeded", "data": {project, bound, manifest}}."""
     slug = _safe_project(project)
-    d = _project_dir(slug)
+    try:
+        d = _project_dir(slug)
+    except PermissionError as exc:
+        return _err(str(exc), error_type="param_error")
     d.mkdir(parents=True, exist_ok=True)
     patch: dict = {"status": "draft"}
     if paper:
@@ -654,6 +729,10 @@ async def experiment_project_state(project: str) -> str:
     the delegation contract for the external coding agent. Use to learn a
     project's entry points before writing about it or delegating."""
     slug = _safe_project(project)
+    try:
+        _project_dir(slug)
+    except PermissionError as exc:
+        return _err(str(exc), error_type="param_error")
     mf = project_manifest.load_manifest(slug)
     recent = [_public_exp(st) for st in _list_experiments(slug)[:5]]
     for e in recent:

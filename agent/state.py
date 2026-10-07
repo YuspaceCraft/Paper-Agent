@@ -41,6 +41,15 @@ class UnderstandResult(BaseModel):
         description="0.0-1.0 confidence in the intent classification. "
                     "Below 0.5 triggers clarification instead of search.",
     )
+    needs_planning: bool = Field(
+        default=False,
+        description="True if the request needs decomposition into an ordered "
+                    "multi-step plan (multi-paper comparison, writing a full "
+                    "manuscript/survey, multi-step experiment reproduction); "
+                    "False for a single concrete action that executes directly "
+                    "(download one paper, answer one question, translate/polish "
+                    "one passage).",
+    )
 
 
 class AgentState(MessagesState):
@@ -54,12 +63,21 @@ class AgentState(MessagesState):
       - Execution layer: iteration, failures (what happened)
     """
     intent: str = ""
+    capability: str = ""
+    optimization_profile: str = "balanced"
+    # Stable identity for one user turn, preserved across approval/resume.
+    # Side-effecting tool idempotency is scoped to this value rather than the
+    # whole conversation, so intentional repeats in later turns are allowed.
+    execution_id: str = ""
     confidence: float = 1.0
     entities: list[str] = []
     focus_papers: list[str] = []
     # Memory layer — added by memory_node
     # Compact snapshot for downstream nodes. Built by MemoryManager.build_snapshot().
     context_snapshot: str = ""
+    # Metadata only (no prompt text): records the budget/selection decision for
+    # the current Context Pack and is emitted into the trace by memory_node.
+    context_decision: dict = {}
     # Cached LLM summary of messages older than MemoryManager.BUFFER_SIZE.
     summary_cache: str = ""
     # How many older messages have been summarized (index into messages list).
@@ -102,14 +120,23 @@ class AgentState(MessagesState):
     # plan: ordered steps from plan_node. [{id, description, target, args, depends_on}]
     # executor_node 回填每个 dict 的 status: pending/running/done/failed/skipped
     plan: list[dict] = []
+    # Pre-execution DAG validation and cost estimate for the current plan.
+    plan_validation: dict = {}
+    plan_cost: dict = {}
     # plan_progress: number of plan steps completed by executor_node
     plan_progress: int = 0
     # subagent_results: executor output. [{step_id, ok, output, error}]
     subagent_results: list[dict] = []
+    # operation_results: shared OperationResult.model_dump() keyed by operation id.
+    # subagent_results remains the plan-specific projection for compatibility.
+    operation_results: dict = {}
     # verification: verify_node 输出（计划完成验证报告式结论）。
     # {status: satisfied|partial|failed|no_evidence, done, total,
     #  outstanding: [{id, description, reason}]}；synthesize 消费。
     verification: dict = {}
+    goal_contract: dict = {}
+    goal_drift: dict = {}
+    goal_drift_strikes: int = 0
     # ---- Subagent runtime (Phase 8) ----
     # subagent_system: non-empty → agent_node uses this instead of AGENT_SYSTEM
     subagent_system: str = ""
@@ -121,6 +148,11 @@ class AgentState(MessagesState):
     # LangGraph schema discards updates for keys NOT declared here — missing
     # this field made the graph always fall back to "paper" (v10 断裂点).
     domain: str = "paper"
+    # Whether the turn needs multi-step planning. understand_node labels it by
+    # task STRUCTURE (single-action vs decomposable multi-step), NOT by verb list
+    # — the general signal that keeps "下载/翻译/收藏/润色一句" out of plan mode
+    # while still planning 对比/写综述/长实验。decide_mode 用它做主信号。
+    needs_planning: bool = False
     # Active writing document (set by plan_node when the creation plan creates one).
     doc_id: str | None = None
     # ---- leader-department supervision (领导-部门制) ----

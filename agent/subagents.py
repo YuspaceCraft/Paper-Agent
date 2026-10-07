@@ -14,11 +14,13 @@ build_subagents: config-driven factory — one SubagentSpec per subagent
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from dataclasses import dataclass
 
 from langgraph.graph import StateGraph, END
+from langgraph.errors import GraphInterrupt
 from langchain_core.tools import StructuredTool, tool
 from langchain_core.runnables.config import RunnableConfig
 from pydantic import BaseModel, Field
@@ -27,10 +29,62 @@ from .state import AgentState
 from .nodes import agent_node, after_agent, build_tools_node
 from .tools import get_cached_tools
 from .config import get_limits
+from .core.contracts import (
+    AgentError,
+    ErrorType,
+    OperationKind,
+    OperationOutcome,
+    OperationResult,
+    ResultMeta,
+)
+from .core.result_utils import extract_final_answer, structured_error_payload
 from .stream import emit, set_scope, reset_scope
+from .observability import log_event
+from .prompt_contracts import (
+    COMPLETION_CONTRACT,
+    EVIDENCE_CONTRACT,
+    MACHINE_OUTPUT_CONTRACT,
+    TRUST_BOUNDARY,
+)
 
 
 # ---- runtime factory ----
+
+
+def _is_terminal_subagent_error(payload: dict | None) -> bool:
+    """True when retrying inside the restricted subagent cannot recover."""
+    if not payload:
+        return False
+    marker = json.dumps(payload, ensure_ascii=False).casefold()
+    return (
+        "arxiv_api_unavailable" in marker
+        or "406 not acceptable" in marker
+    )
+
+
+def _terminal_subagent_error(state: AgentState) -> dict | None:
+    messages = state.get("messages") or []
+    if not messages:
+        return None
+    terminal: dict | None = None
+    for message in reversed(messages):
+        kind = getattr(message, "type", "")
+        if kind == "ai":
+            break
+        if kind != "tool":
+            continue
+        payload = structured_error_payload(getattr(message, "content", ""))
+        if payload is None:
+            return None  # another result in this tool batch succeeded
+        if _is_terminal_subagent_error(payload):
+            terminal = payload
+    return terminal
+
+
+def _after_subagent_tools(state: AgentState) -> str:
+    """Skip another model turn when the restricted toolset is unrecoverable."""
+    return "synthesize" if _terminal_subagent_error(state) else "subagent_agent"
+
 
 async def _subagent_synthesize(state: AgentState, config) -> dict:
     """Safety net: subagent exhausted max_steps without a final answer.
@@ -43,15 +97,23 @@ async def _subagent_synthesize(state: AgentState, config) -> dict:
     from langchain_core.messages import AIMessage, SystemMessage
     from .nodes import _get_model, _salvage_tool_content
 
-    model = _get_model(config)
+    terminal = _terminal_subagent_error(state)
+    if terminal:
+        return {"messages": [AIMessage(
+            content=json.dumps(terminal, ensure_ascii=False)
+        )]}
+
+    model = _get_model(config, task="subagent")
     try:
-        response = await model.ainvoke([
+        from evaluation.trace_wrap import traced_ainvoke
+        response = await traced_ainvoke(model, [
             SystemMessage(content=(
-                "Produce your final answer now, from the tool results above. "
-                "Do NOT call any tools."
+                TRUST_BOUNDARY + EVIDENCE_CONTRACT + COMPLETION_CONTRACT +
+                "\nProduce the final answer now from the tool results above. "
+                "Return only that answer and make no further tool calls."
             )),
             *state["messages"],
-        ])
+        ], node="subagent_synthesize", config=config)
         if getattr(response, "content", "").strip():
             return {"messages": [response]}
     except Exception:
@@ -60,7 +122,12 @@ async def _subagent_synthesize(state: AgentState, config) -> dict:
     # LLM failed → salvage raw tool content (best-effort)
     saved = _salvage_tool_content(state.get("messages", []))
     text = (saved or {}).get("text", "").strip()
-    return {"messages": [AIMessage(content=text or "No answer produced.")]}
+    if text:
+        return {"messages": [AIMessage(content=text)]}
+    return {"messages": [AIMessage(content=json.dumps({
+        "error": "subagent_no_output",
+        "detail": "Subagent produced no final answer or recoverable tool output.",
+    }, ensure_ascii=False))]}
 
 
 # ---- leader gate（领导-部门制：worker 需要领导输入时 interrupt 暂停） ----
@@ -166,7 +233,11 @@ def build_subagent(name, system_prompt, tools, *, max_steps=5, checkpointer=None
         edge_map["gate"] = "synthesize"  # request_review 未绑定 → 不可达，仅保映射完整
 
     sg.add_conditional_edges("subagent_agent", after_agent, edge_map)
-    sg.add_edge("subagent_tools", "subagent_agent")
+    sg.add_conditional_edges(
+        "subagent_tools",
+        _after_subagent_tools,
+        {"subagent_agent": "subagent_agent", "synthesize": "synthesize"},
+    )
     sg.add_edge("synthesize", END)
     init_state = {
         "subagent_system": system_prompt,
@@ -222,32 +293,128 @@ def as_tool(name, subgraph, description, args_model=SubagentArgs, init_state=Non
             except Exception:
                 pass
             result = await subgraph.ainvoke(init, config=run_config)
-            answer = ""
-            # (P3) 只取「无 tool_calls 的 AI 消息」作为最终答案——带 tool_calls 的
-            # AI 消息仍是中途状态（正计划下一步/被 max_steps 截断），其 content
-            # 再长也不是答案。
-            for m in reversed(result.get("messages", [])):
-                if getattr(m, "type", "") != "ai":
-                    continue
-                if getattr(m, "tool_calls", None):
-                    continue
-                if getattr(m, "content", "").strip():
-                    answer = str(m.content).strip()
-                    break
-            ok = bool(answer)
-            if not ok:
-                from .tool_contract import err as _err_contract
-                answer = _err_contract("unknown", "subagent produced no final answer")
+            answer = extract_final_answer(result.get("messages", []))
+            answer_error = structured_error_payload(answer) if answer else None
+            succeeded = bool(answer) and answer_error is None
+            duration_ms = round((time.monotonic() - start) * 1000, 1)
+            if succeeded:
+                operation = OperationResult(
+                    kind=OperationKind.SUBAGENT,
+                    operation_id=run_id,
+                    outcome=OperationOutcome.SUCCEEDED,
+                    data={"answer": answer},
+                    meta=ResultMeta(
+                        tool_name=name,
+                        duration_ms=duration_ms,
+                        attempt=1,
+                        max_attempts=1,
+                    ),
+                )
+            else:
+                code = (
+                    str(answer_error.get("error") or "SUBAGENT_EMPTY_OUTPUT")
+                    if answer_error else "SUBAGENT_EMPTY_OUTPUT"
+                )
+                detail = (
+                    str(answer_error.get("detail") or answer_error.get("error") or "")
+                    if answer_error else ""
+                )
+                error = AgentError(
+                    error_type=ErrorType.SUBAGENT,
+                    code=code,
+                    message=detail or "Subagent produced no final answer.",
+                    user_message=(
+                        f"子代理执行失败：{detail}"
+                        if detail else "子代理未生成最终结果。"
+                    ),
+                    retryable=False,
+                    recovery_action=(
+                        "Fall back to the local library or report the external outage."
+                        if answer_error else "Retry with a more explicit task."
+                    ),
+                    tool_name=name,
+                )
+                operation = OperationResult(
+                    kind=OperationKind.SUBAGENT,
+                    operation_id=run_id,
+                    outcome=OperationOutcome.FAILED,
+                    data={"answer": answer} if answer else None,
+                    error=error,
+                    meta=ResultMeta(
+                        tool_name=name,
+                        duration_ms=duration_ms,
+                        attempt=1,
+                        max_attempts=1,
+                    ),
+                )
+                succeeded = False
+            answer = operation.to_envelope()
             emit({"type": "tool_end", "id": run_id, "name": name,
-                  "status": "success" if ok else "error",
+                  "status": "success" if succeeded else "error",
+                  "outcome": operation.outcome.value,
+                  "code": operation.error.code if operation.error else "",
                   "result": answer[:4000],
                   "execution_time": round(time.monotonic() - start, 2)})
+            log_event(
+                "tool_timing", node="subagent", tool=name,
+                duration_ms=duration_ms,
+                outcome=operation.outcome.value,
+                kind="subagent", call_id=run_id,
+                result_bytes=len(answer.encode("utf-8")),
+            )
             return answer
-        except Exception as exc:
+        except asyncio.CancelledError:
+            duration_ms = round((time.monotonic() - start) * 1000, 1)
             emit({"type": "tool_end", "id": run_id, "name": name,
-                  "status": "error", "result": f"{type(exc).__name__}: {exc}",
-                  "execution_time": round(time.monotonic() - start, 2)})
+                  "status": "error", "outcome": "cancelled",
+                  "code": "SUBAGENT_CANCELLED",
+                  "result": "子代理执行已取消。",
+                  "execution_time": round(duration_ms / 1000, 2)})
+            log_event(
+                "tool_timing", node="subagent", tool=name,
+                duration_ms=duration_ms, outcome="cancelled", kind="subagent",
+                call_id=run_id, error="SUBAGENT_CANCELLED",
+            )
             raise
+        except GraphInterrupt:
+            # A side-effect approval inside the subgraph must pause the parent
+            # graph, not become a synthetic subagent failure.
+            raise
+        except Exception as exc:
+            duration_ms = round((time.monotonic() - start) * 1000, 1)
+            error = AgentError(
+                error_type=ErrorType.SUBAGENT,
+                code="SUBAGENT_EXECUTION_FAILED",
+                message=f"{type(exc).__name__} while running subagent.",
+                user_message="子代理执行失败。",
+                retryable=False,
+                recovery_action="Retry once or inspect the subagent trace.",
+                tool_name=name,
+            )
+            operation = OperationResult(
+                kind=OperationKind.SUBAGENT,
+                operation_id=run_id,
+                outcome=OperationOutcome.FAILED,
+                error=error,
+                meta=ResultMeta(
+                    tool_name=name,
+                    duration_ms=duration_ms,
+                    attempt=1,
+                    max_attempts=1,
+                    effect_applied="unknown",
+                ),
+            )
+            answer = operation.to_envelope()
+            emit({"type": "tool_end", "id": run_id, "name": name,
+                  "status": "error", "outcome": "failed",
+                  "code": error.code, "result": answer,
+                  "execution_time": round(duration_ms / 1000, 2)})
+            log_event(
+                "tool_timing", node="subagent", tool=name,
+                duration_ms=duration_ms, outcome="failed", kind="subagent",
+                call_id=run_id, error=error.code,
+            )
+            return answer
         finally:
             reset_scope(token)
 
@@ -270,7 +437,7 @@ class SubagentSpec:
     max_steps: int = 5    # step 粒度的子代理轮次上限（单任务窄工具面够用）
 
 
-ARXIV_SYSTEM = """\
+ARXIV_SYSTEM = TRUST_BOUNDARY + EVIDENCE_CONTRACT + MACHINE_OUTPUT_CONTRACT + """\
 You are an arXiv search specialist. Your ONLY tools are the arxiv__* tools below
 — the arXiv API is your entire scope; you cannot touch the local library
 (that is the parent's job via its direct search_papers/fetch_content tools).
@@ -281,17 +448,23 @@ Toolset (all you may call):
 - arxiv__get_full_paper_text(paper_id)  # very large — prefer get_paper_data first
 - arxiv__list_categories(primary_category)
 - arxiv__update_categories()
+- artifact_read(artifact_id, offset, max_chars)  # continue oversized results
 
 Given a research topic or paper reference, find and read relevant arXiv papers.
 Search tip: use field prefixes (ti:, cat:, au:) for precision; broad queries
 return too many results.
+For an ordinary FIND task, call arxiv__search_papers directly. Do NOT call
+arxiv__list_categories / arxiv__update_categories unless the user explicitly
+asks about arXiv category taxonomy. After one successful search, return the
+ranked JSON immediately instead of expanding the exploration.
 
 Output rules — choose the format by the task's modality:
 - FIND / IDENTIFY tasks (search, resolve which paper or arXiv ID matches a
   name/claim): Output ONLY a JSON object, no preamble, no prose, no code
   fences. The arxiv_id field is the caller's source of truth:
   {"papers": [{"arxiv_id": "...", "title": "...", "authors": "...", "abstract": "..."}]}
-  ≤5 papers, ranked by relevance.
+  ≤3 papers, ranked by relevance; for a download/acquisition task return only
+  the single best paper. Keep each abstract ≤240 characters.
 - READ tasks (abstract, full text, metadata review): Output ONLY the requested
   content as prose/markdown, no tool names.
 
@@ -309,7 +482,7 @@ Honesty — you CANNOT identify any paper from memory:
 
 Keep the answer in the same language as the task."""
 
-INGEST_SYSTEM = """\
+INGEST_SYSTEM = TRUST_BOUNDARY + EVIDENCE_CONTRACT + COMPLETION_CONTRACT + """\
 You are the paper-ingestion executor. Your ONLY tools are download_paper and
 ingest_paper. Execute EXACTLY the action field of the command block — nothing more.
 
@@ -356,7 +529,7 @@ Rules — execute ONLY the action field:
 5. HONESTY: report the EXACT path/filename the tool results confirmed. Never
    claim a destination folder or filename the tool result does not confirm.
 
-On download failure (ok:false), report the error as-is — do NOT retry the same
+On download failure (outcome:failed), report the error as-is — do NOT retry the same
 arxiv_id more than once. A download_paper result with error_type="unverified"
 (422, 无法验证 arXiv ID) is FINAL: stop, do not retry, do not invent another
 ID, do not fall back to a guessed PDF path — report it and stop.
@@ -372,7 +545,7 @@ and the parent tracks it via check_task_status(task_id).
 Output ONLY a short status summary. No preamble."""
 
 
-CREATOR_SYSTEM = """\
+CREATOR_SYSTEM = TRUST_BOUNDARY + EVIDENCE_CONTRACT + MACHINE_OUTPUT_CONTRACT + """\
 You are the scientific writing specialist. Write the EXACT section requested in the
 task — nothing more. The task is self-contained (zero-state): it carries the document
 id, the section id/title, the reference papers, and the writing style. Never invent
@@ -388,6 +561,8 @@ Toolset (all you may call):
   material from the LOCAL library when the task references papers. Cite with [N]
   markers inline next to the supported claim (keep them verbatim — the parent resolves
   them to [Paper, page N] later).
+- artifact_read(artifact_id, offset, max_chars): continue a truncated or spilled
+  tool result without reloading the entire source.
 - read_file / list_dir: inspect workspace files only if the task explicitly needs them.
 - experiment_list(project) / read_metrics(exp_id) / study_context(topic): when the
   task cites experiment results or compares against a baseline, pull the REAL
@@ -421,7 +596,7 @@ preamble, no restated content:
 """
 
 
-CODER_SYSTEM = """\
+CODER_SYSTEM = TRUST_BOUNDARY + EVIDENCE_CONTRACT + COMPLETION_CONTRACT + """\
 You are the experiment/code specialist. Execute the task inside an experiment project
 under the configured experiments root / <project>. The task is self-contained (zero-state).
 
@@ -446,6 +621,7 @@ Toolset (all you may call):
 - study_context(topic) / study_add_hypothesis(topic, hypothesis): read/write the
   study knowledge base (prior experiments = comparison baseline for optimization).
 - read_file / list_dir / search_papers / fetch_content: inspect code and reference papers.
+- artifact_read(artifact_id, offset, max_chars): continue an oversized tool result.
 
 Workflow (recommended):
 1. Explore: list_dir + git_status (+ read_file of the key script) to learn the project.
@@ -480,7 +656,7 @@ SUBAGENTS: list[SubagentSpec] = [
         tools=[
             "arxiv__search_papers", "arxiv__get_paper_data",
             "arxiv__get_full_paper_text", "arxiv__list_categories",
-            "arxiv__update_categories",
+            "arxiv__update_categories", "artifact_read",
         ],
     ),
     SubagentSpec(
@@ -513,6 +689,7 @@ SUBAGENTS: list[SubagentSpec] = [
             "doc_write_section", "doc_get_state", "doc_create",
             "doc_set_outline", "doc_list", "doc_export_docx",
             "search_papers", "fetch_content",
+            "artifact_read",
             # 实验引用（对话中心化：写完实验章要引用真实指标/基线）
             "experiment_list", "read_metrics", "study_context",
             "read_file", "list_dir",
@@ -542,6 +719,7 @@ SUBAGENTS: list[SubagentSpec] = [
             "study_context", "study_add_hypothesis",
             "read_file", "list_dir",
             "search_papers", "fetch_content",
+            "artifact_read",
         ],
     ),
 ]

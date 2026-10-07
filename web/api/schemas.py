@@ -13,9 +13,12 @@ from datetime import datetime
 
 class TaskStatus(BaseModel):
     task_id: str
-    status: str  # pending | running | done | failed
+    status: str  # pending | running | interrupted | orphaned | done | failed
     progress: str = ""
     error: str | None = None
+    error_code: str = ""
+    retryable: bool = False
+    outcome: str = ""
     result: dict | None = None
     created_at: str = ""
     updated_at: str = ""
@@ -98,12 +101,24 @@ class AgentChatResponse(BaseModel):
     thread_id: str = "default"
     mode: str = ""
     error: str | None = None
+    requires_approval: bool = False
+    approval: dict | None = None
+    task_status: dict = Field(default_factory=dict)
+    final_confidence: dict = Field(default_factory=dict)
+
+
+class AgentResumeRequest(BaseModel):
+    thread_id: str = Field(default="default", description="Conversation session ID")
+    approved: bool = Field(..., description="Approve or deny the pending tool call")
+    mode: Literal["auto", "react", "plan"] = Field(default="auto")
 
 
 class AgentHealthResponse(BaseModel):
     status: str
     model: str
     tools: int
+    model_status: str = "configured"
+    model_candidates: list[dict] = Field(default_factory=list)
 
 
 # ---- Background tasks (agent-driven) ----

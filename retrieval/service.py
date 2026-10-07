@@ -9,9 +9,13 @@ DenseRetriever: 向量检索的轻量封装（供 fusion 和独立使用）。
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any
+
+from .query_rewrite import fuse_query_variants, rewrite_query
 
 
 class DenseRetriever:
@@ -69,27 +73,14 @@ class RetrievalService:
             List of {chunk_id, score, document, metadata, ...} dicts.
         """
         k = top_k or self._top_k
-
-        if self._method == "dense":
-            hits = self._dense.search(query, top_k=k, filters=self._metadata_filter)
-
-        elif self._method == "sparse":
-            if self._sparse is None:
-                return []
-            hits = self._sparse.search(query, top_k=k)
-
-        elif self._method == "hybrid":
-            from .fusion import rrf_fuse, weighted_fuse
-
-            d_hits = self._dense.search(query, top_k=max(k, self._sparse_top_k_override), filters=self._metadata_filter)
-            s_hits = self._sparse.search(query, top_k=max(k, self._sparse_top_k_override)) if self._sparse else []
-
-            if self._hybrid_mode == "weighted":
-                hits = weighted_fuse(d_hits, s_hits, dense_weight=self._dense_weight, top_k=k)
-            else:
-                hits = rrf_fuse(d_hits, s_hits, top_k=k)
-        else:
-            return []
+        rewrite = rewrite_query(query)
+        variants = list(rewrite.variants) or [query]
+        result_lists = [
+            self._search_once(variant, top_k=max(k, self._sparse_top_k_override)
+                              if len(variants) > 1 else k)
+            for variant in variants
+        ]
+        hits = fuse_query_variants(result_lists, top_k=k)
 
         # ponytail: augment sparse results with document/metadata from chunk map
         for h in hits:
@@ -97,7 +88,47 @@ class RetrievalService:
             if not h.get("document") and cid in self._chunks_map:
                 cm = self._chunks_map[cid]
                 h.setdefault("document", cm.get("content", ""))
-                h.setdefault("metadata", cm.get("metadata", {}))
+                metadata = dict(cm.get("metadata") or {})
+                for key in ("content_type", "section_path", "token_count"):
+                    metadata.setdefault(key, cm.get(key, ""))
+                h.setdefault("metadata", metadata)
+
+        return hits
+
+    def _search_once(self, query: str, *, top_k: int) -> list[dict]:
+        """Run the configured strategy for one query variant."""
+
+        if self._method == "dense":
+            hits = self._dense.search(query, top_k=top_k, filters=self._metadata_filter)
+
+        elif self._method == "sparse":
+            if self._sparse is None:
+                return []
+            hits = self._sparse.search(query, top_k=top_k)
+
+        elif self._method == "hybrid":
+            from .fusion import rrf_fuse, weighted_fuse
+
+            d_hits = self._dense.search(
+                query,
+                top_k=max(top_k, self._sparse_top_k_override),
+                filters=self._metadata_filter,
+            )
+            s_hits = (
+                self._sparse.search(query, top_k=max(top_k, self._sparse_top_k_override))
+                if self._sparse else []
+            )
+
+            if self._hybrid_mode == "weighted":
+                hits = weighted_fuse(
+                    d_hits, s_hits,
+                    dense_weight=self._dense_weight,
+                    top_k=top_k,
+                )
+            else:
+                hits = rrf_fuse(d_hits, s_hits, top_k=top_k)
+        else:
+            return []
 
         return hits
 
@@ -150,10 +181,26 @@ class RetrievalService:
         sparse = None
         chunks_map: dict[str, dict] = {}
         if rag_chunks:
-            chunks = json.loads(Path(rag_chunks).read_text(encoding="utf-8")).get("chunks", [])
+            raw = Path(rag_chunks).read_bytes()
+            chunks = json.loads(raw).get("chunks", [])
             chunks_map = {c["chunk_id"]: c for c in chunks}
             sparse = SparseRetriever()
-            sparse.index(chunks)
+            cache_path = None
+            cache_key = ""
+            if os.getenv("RETRIEVAL_SPARSE_CACHE", "1") != "0":
+                cache_root = Path(
+                    os.getenv(
+                        "RETRIEVAL_SPARSE_CACHE_DIR",
+                        str(Path(__file__).resolve().parents[1] / ".cache" / "retrieval"),
+                    )
+                )
+                cache_path = cache_root / "sparse_index.pkl"
+                cache_key = hashlib.sha256(raw).hexdigest()
+            sparse.index(
+                chunks,
+                cache_path=cache_path,
+                cache_key=cache_key,
+            )
 
         return cls(
             method=method,

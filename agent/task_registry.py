@@ -15,6 +15,7 @@ status 归一化 pending|running|done|failed|other；原始状态留在 detail�
 """
 from __future__ import annotations
 
+import asyncio
 import json
 
 _KIND_SYNONYMS = {
@@ -51,13 +52,21 @@ async def _dispatched() -> list[dict]:
         return []
     out = []
     for m in cards or []:
+        normalized, original = _norm_status(
+            m.get("status", "unknown"),
+            m.get("outcome", ""),
+        )
         out.append({
             "task_id": m.get("task_id", ""),
             "kind": m.get("role") or m.get("kind") or "subagent",
             "title": m.get("title", ""),
-            "status": m.get("status", "unknown"),
+            "status": normalized,
             "progress": m.get("progress", ""),
-            "detail": {},
+            "detail": {
+                "original_status": original,
+                "outcome": m.get("outcome", ""),
+                "error_code": m.get("error_code", ""),
+            },
             "created_at": m.get("created_at", ""),
         })
     return out
@@ -89,7 +98,7 @@ async def _docs() -> list[dict]:
         pay = json.loads(await doc_list.ainvoke({"status": ""}))
     except Exception:
         return []
-    if not pay.get("ok"):
+    if pay.get("outcome") not in {"succeeded", "partial", "skipped"}:
         return []
     out = []
     for d in pay.get("data", {}).get("docs", []):
@@ -134,8 +143,10 @@ async def _redis_tasks() -> list[dict]:
 
 async def list_tasks(kind: str = "") -> list[dict]:
     """全部长期任务并集（latest first，cap 50）。kind 过滤（精确 kind 名）。"""
-    merged = (await _dispatched()) + (await _experiments()) + (await _docs()) \
-        + (await _redis_tasks())
+    groups = await asyncio.gather(
+        _dispatched(), _experiments(), _docs(), _redis_tasks(),
+    )
+    merged = [item for group in groups for item in group]
     entries = []
     for m in merged:
         entries.append({

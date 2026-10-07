@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "bc75dd281598a92a49584086683a1b7c",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "b8487f5afeb3452294377da2c76bc2f0",
+    "execution_id": "0917753400bc4b09b39da6e27e4e1f0c",
+    "thread_id": "evalqa:eval_5a576970:download_hard_long_batch_three",
+    "tool_name": "search_papers",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 16.00000000325963,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "fa24e926f8f5139973d961c68079281f",
+      "sha256": "fa24e926f8f5139973d961c68079281fac644fa809a7c93fd6ab5dcea6e3d220",
+      "bytes": 5309,
+      "chars": 5309,
+      "media_type": "application/json",
+      "tool_name": "search_papers",
+      "execution_id": "0917753400bc4b09b39da6e27e4e1f0c",
+      "thread_id": "evalqa:eval_5a576970:download_hard_long_batch_three",
+      "created_at": "2026-09-20T01:55:30.816238+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\fa\\fa24e926f8f5139973d961c68079281f.txt"
+    }
+  ],
+  "data": {
+    "results": [
+      {
+        "chunk_id": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and__chunk_0026",
+        "paper": "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+        "section": "References",
+        "text": "- [1] H. M. Albarakati et al., 'A novel deep learning architecture for agriculture land cover and land use classification from remote sensing images based on network-level fusion of self-attention architecture,' IEEE J. Sel. Topics Appl. Earth Observ. Remote Sens. , vol. 17, pp. 6338-6353, 2024, doi: 10.1109/JSTARS.2024.3369950.\n\n- [2] J. Nie et al., 'Full-progress crop management and harvesting scheme with integrated space information: A case of jujube orchard,' J. Ind. Inf. Integration , vol. 42, Oct. 2024, Art. no. 100699, doi: 10.1016/j.jii.2024.100699.\n\n- [3] Z. Sun et al., 'Rapid expansion of coastal mangrove forest in guangxi beibu gulf: Patterns, drivers and impacts,' IEEE J. Sel. Topics Appl. Earth Observ. Remote Sens. , vol. 18, pp. 510-522, 2025, doi: 10.1109/JSTARS.2024.3454976",
+        "score": 0.0558080890409357
+      },
+      {
+        "chunk_id": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing__chunk_0025",
+        "paper": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing",
+        "section": "",
+        "text": "Table with 14 rows and 4 columns. Key metrics: ID ranges 1.00 - 14.00; Paramters(M) ranges 39.90 - 286.50. Columns: ID, Method, Paramters(M), FLOPs.",
+        "score": 0.039022949357569565
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0036",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "",
+        "text": "Table with 5 rows and 8 columns. Key metrics: Num ranges 1.00 - 5.00; BLEU-4 ranges 50.20 - 60.90; METEOR ranges 29.20 - 37.80; ROUGE-L ranges 56.50 - 71.50; CIDEr ranges 96.30 - 125.60. Columns: Num, BLEU-4, METEOR, ROUGE-L, CIDEr, SPICE, BARTScore, MoverScore.",
+        "score": 0.03780966928419653
+      },
+      {
+        "chunk_id": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing__chunk_0034",
+        "paper": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing",
+        "section": "References",
+        "text": "- [43] X. Yu, Y. Li, J. Ma, C. Li, and H. Wu, 'Diffusion-rscc: Diffusion probabilistic model for change captioning in remote sensing images,' IEEE Trans. Geosci. Remote Sens. , 2025.\n\n- [44] Q. Zhou, J. Gao, Y. Yuan, and Q. Wang, 'Single-stream extractor network with contrastive pre-training for remote-sensing change captioning,' IEEE Trans. Geosci. Remote Sens. , vol. 62, pp. 1-14, 2024.\n\n- [45] L. Qiu, X. Zhang, C. Gu, and S. Zhu, 'A dual attentive generative adversarial network for remote sensing image change detection,' arXiv preprint arXiv:2310.01876 , 2023.\n\n- [46] J.-J. Wang, N. Dobigeon, M. Chabert, D.-C. Wang, T.-Z. Huang, and J. Huang, 'Cd-gan: A robust fusion-based generative adversarial network for unsupervised remote sensing change detection with heterogeneous sensors,' arXiv",
+        "score": 0.03668919090891063
+      },
+      {
+        "chunk_id": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing__chunk_0030",
+        "paper": "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing",
+        "section": "V. CONCLUSION",
+        "text": "|    62.15 |    37.65 |     73.03 |    135.16 |        79.3 |\n| Backbone + MSAFF + CE (ours) |    85.90 |    77.12 |    70.72 |    64.32 |    39.91 |     75.67 |    137.71 |        81.7 |\n\nFig. 6. Comparison of mask approximation results with and without the proposed FGCF method.  \n<!-- image -->\n\n## V. CONCLUSION  \nIn this paper, we presented a novel approach to remote sensing image change captioning by integrating diffusion models into the change captioning process. Our method shifts the focus from traditional feature learning paradigms to a data distribution learning perspective, addressing the limitations of existing CNN-based techniques. By incorporating a multi-scale change captioning module and refining the output features t",
+        "score": 0.03458652228492386
+      }
+    ],
+    "papers": [
+      "Cross-Temporal_Remote_Sensing_Image_Change_Captioning_A_Manifold_Mapping_and",
+      "Mask_Approximation_Net_A_Novel_Diffusion_Model_Approach_for_Remote_Sensing",
+      "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote"
+    ],
+    "total": 5
+  }
+}

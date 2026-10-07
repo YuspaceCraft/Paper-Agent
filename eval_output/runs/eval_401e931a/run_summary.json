@@ -1,0 +1,307 @@
+{
+  "run_id": "eval_401e931a",
+  "dataset_id": "sha1-604c879a3727",
+  "status": "done",
+  "query_count": 5,
+  "started_at": "2026-09-16T01:35:04+00:00",
+  "finished_at": "2026-09-16T01:52:55+00:00",
+  "duration_s": 1070.3,
+  "metadata": {
+    "commit": "d37ac0f336ee",
+    "model": "qwen-plus",
+    "config_fingerprint": "22a918db",
+    "tools_fingerprint": "58f18c90",
+    "dataset_id": "sha1-604c879a3727",
+    "ordering": "tool_call_sequence"
+  },
+  "overall": {
+    "recall@5": 1.0,
+    "precision@5": 0.2,
+    "ndcg@5": 1.0,
+    "hit@5": 1.0,
+    "recall@10": 1.2,
+    "precision@10": 0.12,
+    "ndcg@10": 1.0712,
+    "hit@10": 1.0,
+    "recall@20": 1.4,
+    "precision@20": 0.07,
+    "ndcg@20": 1.127,
+    "hit@20": 1.0,
+    "mrr": 1.0,
+    "tool_success_rate": 1.0,
+    "tool_calls": 16,
+    "tool_failures": 0,
+    "task_success_rate": 1.0,
+    "task_success": 5,
+    "task_degraded": 0,
+    "task_failed": 0,
+    "recovery_rate": null,
+    "duration_s": 1070.3,
+    "answer_latency_p50_s": 13.59,
+    "answer_latency_p95_s": 35.75,
+    "answer_latency_max_s": 35.75,
+    "cost_usd": 0.1059,
+    "tokens_total": 125081
+  },
+  "dimension": [
+    {
+      "dimension": "difficulty_level",
+      "value": "unknown",
+      "count": 5,
+      "recall@5": 1.0,
+      "precision@5": 0.2,
+      "ndcg@5": 1.0,
+      "mrr": 1.0,
+      "recall@10": 1.2,
+      "precision@10": 0.12,
+      "ndcg@10": 1.0712,
+      "recall@20": 1.4,
+      "precision@20": 0.07,
+      "ndcg@20": 1.127
+    },
+    {
+      "dimension": "content_type",
+      "value": "unknown",
+      "count": 5,
+      "recall@5": 1.0,
+      "precision@5": 0.2,
+      "ndcg@5": 1.0,
+      "mrr": 1.0,
+      "recall@10": 1.2,
+      "precision@10": 0.12,
+      "ndcg@10": 1.0712,
+      "recall@20": 1.4,
+      "precision@20": 0.07,
+      "ndcg@20": 1.127
+    },
+    {
+      "dimension": "generation_mode",
+      "value": "unknown",
+      "count": 5,
+      "recall@5": 1.0,
+      "precision@5": 0.2,
+      "ndcg@5": 1.0,
+      "mrr": 1.0,
+      "recall@10": 1.2,
+      "precision@10": 0.12,
+      "ndcg@10": 1.0712,
+      "recall@20": 1.4,
+      "precision@20": 0.07,
+      "ndcg@20": 1.127
+    }
+  ],
+  "judge": {
+    "context_hit": null,
+    "faithfulness": null,
+    "intent_accuracy": null,
+    "sample_size": 5,
+    "dropped": {
+      "context_hit": 5,
+      "faithfulness": 5,
+      "intent_accuracy": 5
+    },
+    "model": "kimi-k2.6",
+    "drop_warning": "context_hit drop rate >10% (5/5)"
+  },
+  "badcases": [],
+  "tool_metrics": {
+    "per_tool": {
+      "fetch_content": {
+        "calls": 9,
+        "ok": 9,
+        "success_rate": 1.0,
+        "p50_ms": 31.0,
+        "p95_ms": 62.0,
+        "max_ms": 62.0,
+        "error_types": {
+          "ok": 9
+        }
+      },
+      "search_papers": {
+        "calls": 7,
+        "ok": 7,
+        "success_rate": 1.0,
+        "p50_ms": 31.0,
+        "p95_ms": 20015.0,
+        "max_ms": 20015.0,
+        "error_types": {
+          "ok": 7
+        }
+      }
+    },
+    "per_mode": {
+      "dispatcher": {
+        "calls": 16,
+        "ok": 16,
+        "success_rate": 1.0,
+        "p50_ms": 31.0,
+        "p95_ms": 20015.0,
+        "max_ms": 20015.0,
+        "error_types": {
+          "ok": 16
+        }
+      }
+    },
+    "badcases": [],
+    "overall": {
+      "calls": 16,
+      "ok": 16,
+      "success_rate": 1.0,
+      "p50_ms": 31.0,
+      "p95_ms": 20015.0,
+      "errors": 0
+    }
+  },
+  "task_metrics": {
+    "task_success_rate": 1.0,
+    "query_count": 5,
+    "success": 5,
+    "degraded": 0,
+    "failed": 0,
+    "failed_queries": [],
+    "failures": [],
+    "recovery_rate": null
+  },
+  "baseline_delta": {
+    "because_best": {
+      "recall@5": 1.0,
+      "precision@5": 0.2,
+      "ndcg@5": 1.0,
+      "hit@5": 1.0,
+      "recall@10": 1.2,
+      "precision@10": 0.12,
+      "ndcg@10": 1.0712,
+      "hit@10": 1.0,
+      "recall@20": 1.4,
+      "precision@20": 0.07,
+      "ndcg@20": 1.127,
+      "hit@20": 1.0,
+      "mrr": 1.0,
+      "tool_success_rate": 1.0,
+      "task_success_rate": 1.0
+    },
+    "deltas": {
+      "recall@5": {
+        "prev": 1.0,
+        "now": 1.0,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "precision@5": {
+        "prev": 0.2,
+        "now": 0.2,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "ndcg@5": {
+        "prev": 1.0,
+        "now": 1.0,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "hit@5": {
+        "prev": 1.0,
+        "now": 1.0,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "recall@10": {
+        "prev": 1.2,
+        "now": 1.2,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "precision@10": {
+        "prev": 0.12,
+        "now": 0.12,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "ndcg@10": {
+        "prev": 1.0712,
+        "now": 1.0712,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "hit@10": {
+        "prev": 1.0,
+        "now": 1.0,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "recall@20": {
+        "prev": 1.4,
+        "now": 1.4,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "precision@20": {
+        "prev": 0.07,
+        "now": 0.07,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "ndcg@20": {
+        "prev": 1.127,
+        "now": 1.127,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "hit@20": {
+        "prev": 1.0,
+        "now": 1.0,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "mrr": {
+        "prev": 1.0,
+        "now": 1.0,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "tool_success_rate": {
+        "prev": 1.0,
+        "now": 1.0,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "task_success_rate": {
+        "prev": 1.0,
+        "now": 1.0,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      }
+    },
+    "gate": "pass",
+    "warnings": []
+  },
+  "cost": {
+    "prompt_tokens": 121423,
+    "completion_tokens": 3658,
+    "tokens_total": 125081,
+    "cost_usd": 0.1059,
+    "estimated_calls": 25,
+    "per_model": {
+      "qwen-plus": {
+        "prompt": 114374,
+        "completion": 3653,
+        "cost_usd": 0.09880520000000002
+      },
+      "default": {
+        "prompt": 7049,
+        "completion": 5,
+        "cost_usd": 0.007059
+      }
+    }
+  },
+  "query_durations_s": [
+    35.7,
+    13.5,
+    6.5,
+    13.6,
+    35.0
+  ],
+  "notes": [
+    "ordering=agent tool-call sequence"
+  ]
+}

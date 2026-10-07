@@ -1,0 +1,496 @@
+{
+  "sha1-25b6de79f3e5": [
+    {
+      "run_id": "run-test",
+      "overall": {
+        "recall@5": 0.75,
+        "precision@5": 0.2,
+        "ndcg@5": 0.8065,
+        "hit@5": 1.0,
+        "recall@10": 0.75,
+        "precision@10": 0.1,
+        "ndcg@10": 0.8065,
+        "hit@10": 1.0,
+        "recall@20": 0.75,
+        "precision@20": 0.05,
+        "ndcg@20": 0.8065,
+        "hit@20": 1.0,
+        "mrr": 1.0,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "run-test",
+      "overall": {
+        "recall@5": 0.75,
+        "precision@5": 0.2,
+        "ndcg@5": 0.8065,
+        "hit@5": 1.0,
+        "recall@10": 0.75,
+        "precision@10": 0.1,
+        "ndcg@10": 0.8065,
+        "hit@10": 1.0,
+        "recall@20": 0.75,
+        "precision@20": 0.05,
+        "ndcg@20": 0.8065,
+        "hit@20": 1.0,
+        "mrr": 1.0,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "run-test",
+      "overall": {
+        "recall@5": 0.75,
+        "precision@5": 0.2,
+        "ndcg@5": 0.8065,
+        "hit@5": 1.0,
+        "recall@10": 0.75,
+        "precision@10": 0.1,
+        "ndcg@10": 0.8065,
+        "hit@10": 1.0,
+        "recall@20": 0.75,
+        "precision@20": 0.05,
+        "ndcg@20": 0.8065,
+        "hit@20": 1.0,
+        "mrr": 1.0,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "run-test",
+      "overall": {
+        "recall@5": 0.75,
+        "precision@5": 0.2,
+        "ndcg@5": 0.8065,
+        "hit@5": 1.0,
+        "recall@10": 0.75,
+        "precision@10": 0.1,
+        "ndcg@10": 0.8065,
+        "hit@10": 1.0,
+        "recall@20": 0.75,
+        "precision@20": 0.05,
+        "ndcg@20": 0.8065,
+        "hit@20": 1.0,
+        "mrr": 1.0,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "run-test",
+      "overall": {
+        "recall@5": 0.75,
+        "precision@5": 0.2,
+        "ndcg@5": 0.8065,
+        "hit@5": 1.0,
+        "recall@10": 0.75,
+        "precision@10": 0.1,
+        "ndcg@10": 0.8065,
+        "hit@10": 1.0,
+        "recall@20": 0.75,
+        "precision@20": 0.05,
+        "ndcg@20": 0.8065,
+        "hit@20": 1.0,
+        "mrr": 1.0,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "run-test",
+      "overall": {
+        "recall@5": 0.75,
+        "precision@5": 0.2,
+        "ndcg@5": 0.8065,
+        "hit@5": 1.0,
+        "recall@10": 0.75,
+        "precision@10": 0.1,
+        "ndcg@10": 0.8065,
+        "hit@10": 1.0,
+        "recall@20": 0.75,
+        "precision@20": 0.05,
+        "ndcg@20": 0.8065,
+        "hit@20": 1.0,
+        "mrr": 1.0,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    }
+  ],
+  "sha1-185f6b25f059": [
+    {
+      "run_id": "eval_fbeaa9fb",
+      "overall": {
+        "recall@5": 0.5,
+        "precision@5": 0.1,
+        "ndcg@5": 0.5,
+        "hit@5": 0.5,
+        "recall@10": 0.5,
+        "precision@10": 0.05,
+        "ndcg@10": 0.5,
+        "hit@10": 0.5,
+        "recall@20": 0.5,
+        "precision@20": 0.025,
+        "ndcg@20": 0.5,
+        "hit@20": 0.5,
+        "mrr": 0.5,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "eval_65e3e6a7",
+      "overall": {
+        "recall@5": 0.5,
+        "precision@5": 0.1,
+        "ndcg@5": 0.5,
+        "hit@5": 0.5,
+        "recall@10": 0.5,
+        "precision@10": 0.05,
+        "ndcg@10": 0.5,
+        "hit@10": 0.5,
+        "recall@20": 0.5,
+        "precision@20": 0.025,
+        "ndcg@20": 0.5,
+        "hit@20": 0.5,
+        "mrr": 0.5,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "eval_ceda8e9c",
+      "overall": {
+        "recall@5": 0.5,
+        "precision@5": 0.1,
+        "ndcg@5": 0.5,
+        "hit@5": 0.5,
+        "recall@10": 0.5,
+        "precision@10": 0.05,
+        "ndcg@10": 0.5,
+        "hit@10": 0.5,
+        "recall@20": 0.5,
+        "precision@20": 0.025,
+        "ndcg@20": 0.5,
+        "hit@20": 0.5,
+        "mrr": 0.5,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "eval_23dbf77e",
+      "overall": {
+        "recall@5": 0.5,
+        "precision@5": 0.1,
+        "ndcg@5": 0.5,
+        "hit@5": 0.5,
+        "recall@10": 0.5,
+        "precision@10": 0.05,
+        "ndcg@10": 0.5,
+        "hit@10": 0.5,
+        "recall@20": 0.5,
+        "precision@20": 0.025,
+        "ndcg@20": 0.5,
+        "hit@20": 0.5,
+        "mrr": 0.5,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "eval_63086f9b",
+      "overall": {
+        "recall@5": 0.5,
+        "precision@5": 0.1,
+        "ndcg@5": 0.5,
+        "hit@5": 0.5,
+        "recall@10": 0.5,
+        "precision@10": 0.05,
+        "ndcg@10": 0.5,
+        "hit@10": 0.5,
+        "recall@20": 0.5,
+        "precision@20": 0.025,
+        "ndcg@20": 0.5,
+        "hit@20": 0.5,
+        "mrr": 0.5,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "eval_59cd77e9",
+      "overall": {
+        "recall@5": 0.5,
+        "precision@5": 0.1,
+        "ndcg@5": 0.5,
+        "hit@5": 0.5,
+        "recall@10": 0.5,
+        "precision@10": 0.05,
+        "ndcg@10": 0.5,
+        "hit@10": 0.5,
+        "recall@20": 0.5,
+        "precision@20": 0.025,
+        "ndcg@20": 0.5,
+        "hit@20": 0.5,
+        "mrr": 0.5,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    }
+  ],
+  "sha1-526e8996cb8b": [
+    {
+      "run_id": "run-done",
+      "overall": {
+        "recall@5": 0.0,
+        "precision@5": 0.0,
+        "ndcg@5": 0.0,
+        "hit@5": 0.0,
+        "recall@10": 0.0,
+        "precision@10": 0.0,
+        "ndcg@10": 0.0,
+        "hit@10": 0.0,
+        "recall@20": 0.0,
+        "precision@20": 0.0,
+        "ndcg@20": 0.0,
+        "hit@20": 0.0,
+        "mrr": 0.0,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "run-failed",
+      "overall": {
+        "recall@5": 0.0,
+        "precision@5": 0.0,
+        "ndcg@5": 0.0,
+        "hit@5": 0.0,
+        "recall@10": 0.0,
+        "precision@10": 0.0,
+        "ndcg@10": 0.0,
+        "hit@10": 0.0,
+        "recall@20": 0.0,
+        "precision@20": 0.0,
+        "ndcg@20": 0.0,
+        "hit@20": 0.0,
+        "mrr": 0.0,
+        "tool_success_rate": 0.0,
+        "task_success_rate": 0.0
+      }
+    },
+    {
+      "run_id": "run-done",
+      "overall": {
+        "recall@5": 0.0,
+        "precision@5": 0.0,
+        "ndcg@5": 0.0,
+        "hit@5": 0.0,
+        "recall@10": 0.0,
+        "precision@10": 0.0,
+        "ndcg@10": 0.0,
+        "hit@10": 0.0,
+        "recall@20": 0.0,
+        "precision@20": 0.0,
+        "ndcg@20": 0.0,
+        "hit@20": 0.0,
+        "mrr": 0.0,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "run-qerr",
+      "overall": {
+        "recall@5": 0.0,
+        "precision@5": 0.0,
+        "ndcg@5": 0.0,
+        "hit@5": 0.0,
+        "recall@10": 0.0,
+        "precision@10": 0.0,
+        "ndcg@10": 0.0,
+        "hit@10": 0.0,
+        "recall@20": 0.0,
+        "precision@20": 0.0,
+        "ndcg@20": 0.0,
+        "hit@20": 0.0,
+        "mrr": 0.0,
+        "tool_success_rate": 0.0,
+        "task_success_rate": 0.0
+      }
+    },
+    {
+      "run_id": "run-done",
+      "overall": {
+        "recall@5": 0.0,
+        "precision@5": 0.0,
+        "ndcg@5": 0.0,
+        "hit@5": 0.0,
+        "recall@10": 0.0,
+        "precision@10": 0.0,
+        "ndcg@10": 0.0,
+        "hit@10": 0.0,
+        "recall@20": 0.0,
+        "precision@20": 0.0,
+        "ndcg@20": 0.0,
+        "hit@20": 0.0,
+        "mrr": 0.0,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "run-qerr",
+      "overall": {
+        "recall@5": 0.0,
+        "precision@5": 0.0,
+        "ndcg@5": 0.0,
+        "hit@5": 0.0,
+        "recall@10": 0.0,
+        "precision@10": 0.0,
+        "ndcg@10": 0.0,
+        "hit@10": 0.0,
+        "recall@20": 0.0,
+        "precision@20": 0.0,
+        "ndcg@20": 0.0,
+        "hit@20": 0.0,
+        "mrr": 0.0,
+        "tool_success_rate": 0.0,
+        "task_success_rate": 0.0
+      }
+    }
+  ],
+  "sha1-604c879a3727": [
+    {
+      "run_id": "eval_401e931a",
+      "overall": {
+        "recall@5": 1.0,
+        "precision@5": 0.2,
+        "ndcg@5": 1.0,
+        "hit@5": 1.0,
+        "recall@10": 1.2,
+        "precision@10": 0.12,
+        "ndcg@10": 1.0712,
+        "hit@10": 1.0,
+        "recall@20": 1.4,
+        "precision@20": 0.07,
+        "ndcg@20": 1.127,
+        "hit@20": 1.0,
+        "mrr": 1.0,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "eval_f5ea787d",
+      "overall": {
+        "recall@5": 1.0,
+        "precision@5": 0.2,
+        "ndcg@5": 1.0,
+        "hit@5": 1.0,
+        "recall@10": 1.2,
+        "precision@10": 0.12,
+        "ndcg@10": 1.0712,
+        "hit@10": 1.0,
+        "recall@20": 1.4,
+        "precision@20": 0.07,
+        "ndcg@20": 1.127,
+        "hit@20": 1.0,
+        "mrr": 1.0,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "eval_f4ba185a",
+      "overall": {
+        "recall@5": 1.0,
+        "precision@5": 0.2,
+        "ndcg@5": 1.0,
+        "hit@5": 1.0,
+        "recall@10": 1.2,
+        "precision@10": 0.12,
+        "ndcg@10": 1.0712,
+        "hit@10": 1.0,
+        "recall@20": 1.4,
+        "precision@20": 0.07,
+        "ndcg@20": 1.127,
+        "hit@20": 1.0,
+        "mrr": 1.0,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    },
+    {
+      "run_id": "eval_f8b81a4a",
+      "overall": {
+        "recall@5": 1.0,
+        "precision@5": 0.2,
+        "ndcg@5": 1.0,
+        "hit@5": 1.0,
+        "recall@10": 1.4,
+        "precision@10": 0.14,
+        "ndcg@10": 1.1425,
+        "hit@10": 1.0,
+        "recall@20": 1.6,
+        "precision@20": 0.08,
+        "ndcg@20": 1.1983,
+        "hit@20": 1.0,
+        "mrr": 1.0,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 1.0
+      }
+    }
+  ],
+  "sha1-fcce3239cd3e": [
+    {
+      "run_id": "eval_b4aed4d5",
+      "metric_version": 2,
+      "overall": {
+        "recall@5": 0.4,
+        "precision@5": 0.08,
+        "ndcg@5": 0.4,
+        "hit@5": 0.4,
+        "recall@10": 0.44,
+        "precision@10": 0.06,
+        "ndcg@10": 0.4204,
+        "hit@10": 0.6,
+        "recall@20": 0.44,
+        "precision@20": 0.03,
+        "ndcg@20": 0.4204,
+        "hit@20": 0.6,
+        "mrr": 0.4222,
+        "tool_success_rate": 1.0,
+        "task_success_rate": 0.4
+      }
+    }
+  ],
+  "sha1-be2053bb5192": [
+    {
+      "run_id": "eval_5a576970",
+      "metric_version": 2,
+      "overall": {
+        "recall@5": 0.4,
+        "precision@5": 0.1222,
+        "ndcg@5": 0.3268,
+        "hit@5": 0.5,
+        "recall@10": 0.4111,
+        "precision@10": 0.0667,
+        "ndcg@10": 0.3325,
+        "hit@10": 0.5556,
+        "recall@20": 0.4222,
+        "precision@20": 0.0361,
+        "ndcg@20": 0.3377,
+        "hit@20": 0.5556,
+        "mrr": 0.3201,
+        "tool_success_rate": 0.9313,
+        "task_success_rate": 0.0278
+      }
+    }
+  ]
+}

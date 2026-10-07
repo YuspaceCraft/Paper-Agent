@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "outcome": "succeeded",
+  "operation_id": "75253e4d1220cf0f3be5d0e0c3aeefc3",
+  "kind": "tool",
+  "meta": {
+    "trace_id": "63c23a4a2f464ab6a6c87e99caac0ace",
+    "execution_id": "dce2cea4eff241d38e803a55ed1354fa",
+    "thread_id": "eval-single-58a6b6",
+    "tool_name": "search_papers",
+    "tool_version": "1",
+    "attempt": 1,
+    "max_attempts": 3,
+    "timeout_ms": null,
+    "duration_ms": 31.000000017229468,
+    "started_at": "",
+    "finished_at": "",
+    "truncated": false,
+    "original_chars": null,
+    "cached": false,
+    "deduplicated": false,
+    "effect_applied": null
+  },
+  "artifacts": [
+    {
+      "artifact_id": "30ddaa7a8cc4541584759b91edce94df",
+      "sha256": "30ddaa7a8cc4541584759b91edce94df3e5241da2a22ad756857b256c0a37a85",
+      "bytes": 4655,
+      "chars": 4655,
+      "media_type": "application/json",
+      "tool_name": "search_papers",
+      "execution_id": "dce2cea4eff241d38e803a55ed1354fa",
+      "thread_id": "eval-single-58a6b6",
+      "created_at": "2026-09-19T11:26:40.234754+00:00",
+      "uri": "C:\\Users\\30811\\pre\\Demo\\outputs\\artifacts\\30\\30ddaa7a8cc4541584759b91edce94df.txt"
+    }
+  ],
+  "data": {
+    "results": [
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0001",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "",
+        "text": "Figure description: This figure illustrates the remote sensing image change captioning (RSICC) task. It displays a bi-temporal image pair with corresponding ground truth and predicted captions, showing the transformation of visual semantic changes into natural language.",
+        "score": 0.43977963892555116
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0003",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "",
+        "text": "Figure description: This figure illustrates the remote sensing image change captioning (RSICC) task. It displays a bi-temporal image pair with corresponding ground truth and predicted captions, showing the transformation of visual semantic changes into natural language.",
+        "score": 0.43977963892555116
+      },
+      {
+        "chunk_id": "2022_chenyang_liu_remote_dataset__chunk_0010",
+        "paper": "2022_chenyang_liu_remote_dataset",
+        "section": "B. Remote Sensing Image Captioning",
+        "text": "for remote sensing image captioning,' IEEE Trans. Geosci. Remote Sens. , vol. 59, no. 12, pp. 10532-10543, Dec. 2021.\n- [69] R. Zhao, Z. Shi, and Z. Zou, 'High-resolution remote sensing image captioning based on structured attention,' IEEE Trans. Geosci. Remote Sens. , vol. 60, pp. 1-14, 2022.\n\n- [68] Q. Wang, W. Huang, X. Zhang, and X. Li, 'Word-sentence framework for remote sensing image captioning,' IEEE Trans. Geosci. Remote Sens. , vol. 59, no. 12, pp. 10532-10543, Dec. 2021.\n- [69] R. Zhao, Z. Shi, and Z. Zou, 'High-resolution remote sensing image captioning based on structured attention,' IEEE Trans. Geosci. Remote Sens. , vol. 60, pp. 1-14, 2022.\n- [70] X. Ma, R. Zhao, and Z.",
+        "score": 0.42765161467833235
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0000",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "Diffusion-RSCC: Diffusion Probabilistic Model for Change Captioning in Remote Sensing Images",
+        "text": "## Diffusion-RSCC: Diffusion Probabilistic Model for Change Captioning in Remote Sensing Images  \nXiaofei Yu, Yitong Li and Jie Ma  \n  Abstract -Remote  sensing  image  change  captioning  (RSICC) aims at generating human-like language to describe the semantic changes between bi-temporal remote sensing image pairs. It provides  valuable  insights  into  environmental  dynamics  and  land management. Unlike conventional change captioning task, RSICC involves not only retrieving relevant information across different modalities and generating fluent captions, but also mitigating the impact  of  pixel-level  differences  on  terrain  change  localization. The pixel problem due to long time span decrease",
+        "score": 0.4154504206601082
+      },
+      {
+        "chunk_id": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote__chunk_0035",
+        "paper": "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+        "section": "",
+        "text": "Figure description: This figure visualizes an ablation study for Remote Sensing Image Change Captioning (RSICC) by comparing bi-temporal image pairs against ground truth and baseline predictions. It contrasts the proposed ResNet-CMF-SSA model with baselines using color-coded text to highlight caption accuracy.",
+        "score": 0.3959534024655204
+      }
+    ],
+    "papers": [
+      "Diffusion-RSCC_Diffusion_Probabilistic_Model_for_Change_Captioning_in_Remote",
+      "2022_chenyang_liu_remote_dataset"
+    ],
+    "total": 5
+  }
+}

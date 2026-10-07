@@ -42,23 +42,35 @@
 
 ## Environment
 
-使用 conda 虚拟环境 `demo`，运行任何 Python 脚本或安装依赖前需先激活。
-
-**Bash 命令中无法使用 `conda activate`**（conda 未 init），改用直接路径：
+项目统一使用 conda 虚拟环境 `demo`。运行任何 Python 脚本、测试或安装依赖前，
+先执行：
 
 ```bash
-# Python 解释器
-C:/Users/30811/miniconda3/envs/demo/python.exe
-
-# pip
-C:/Users/30811/miniconda3/envs/demo/python.exe -m pip
-
-# 示例：运行脚本
-C:/Users/30811/miniconda3/envs/demo/python.exe -m web.cli ingest
-C:/Users/30811/miniconda3/envs/demo/python.exe agent/some_script.py
+conda activate demo
 ```
 
-在终端中可手动 `conda activate demo` 后直接使用 `python` / `pip`。
+不要在未激活 `demo` 的 base/Codex Python 环境中判断项目依赖缺失。应先确认
+当前环境，再运行测试或诊断。
+
+若非交互 shell 无法加载 conda 激活脚本，优先使用：
+
+```bash
+conda run -n demo python -m pytest ...
+```
+
+直接解释器路径仅作为最后兜底：
+
+```text
+C:/Users/30811/miniconda3/envs/demo/python.exe
+```
+
+激活后：
+
+```bash
+# 示例：运行脚本
+python -m web.cli ingest
+python agent/some_script.py
+```
 
 ## Project Structure
 
@@ -67,6 +79,7 @@ C:/Users/30811/miniconda3/envs/demo/python.exe agent/some_script.py
 | `agent/` | **LangGraph Agent 框架** — 论文问答编排（graph.py：understand→memory→resolve→react/plan→search→synthesize），也保留 docling 解析/切分/可视化工具 |
 | `agent/graph.py` | **状态机入口** — `build_graph()` / `run(query, thread_id=...)`；AsyncSqliteSaver → 根目录 checkpoints.db 跨重启持久化 |
 | `agent/nodes.py` + `agent/plan.py` + `agent/resolution.py` + `agent/search_loop.py` | 节点实现 — understand/memory/synthesize/chat/clarify + plan-and-execute（plan_node/executor_node）+ 论文指称消解（resolve_node）+ agent↔tools ReAct 子图 |
+| `agent/core/` | **平台运行时契约与治理（Phase E）** — `contracts.py`（ErrorType/ToolSpec/ExecutionContext/Budget/PromptSpec）、`execution_context.py`（每轮元数据 + `child_config()`）、`configuration.py`（配置快照）、`tool_registry.py`/`policy.py`/`tool_gateway.py`（工具声明、权限/审批/幂等、唯一调用入口）、`context_pack.py`（分区预算）、`memory_policy.py`（记忆 TTL/consent）、`trace_export.py`（LangSmith run 树导出） |
 | `agent/providers/generic_provider.py` | **通用工具集** — read_file/list_dir/get_time/calculator/write_file/fetch_url（路径越界拒绝 + SSRF 守卫 + 权限门） |
 | `agent/providers/builtin_provider.py` | **论文域工具** — search_papers/fetch_content/download_paper/ingest_paper/check_paper/check_task_status（内部走 FastAPI 链路） |
 | `agent/providers/mcp_provider.py` | **MCP 工具装配** — 从 `.mcp.json`（`load_mcp_config`）加载外部 MCP 工具 |
@@ -77,6 +90,8 @@ C:/Users/30811/miniconda3/envs/demo/python.exe agent/some_script.py
 | `mcphub/` | MCP Hub 服务端实现 |
 | `mcp_simple_arxiv/` | ArXiv MCP 服务端 |
 | `eval_output/` | 评估产出（manifest、报告、最优配置、论文注册表） |
+| `evaluation/` | **Agent 评测体系（评估端）** — **LangSmith-first**：run 树由 LangGraph 自动插桩（join 键：线上 `trace_id == 根 run id`，评测路径真实 run id 记在 `trace_events.run_id`；节点内 LLM/工具已透传 config，P1 缺口关闭）+ 本地 trace_store.db/归档 JSONL 域事件评测 + 四类指标（检索/LLM-as-judge/工具/任务执行）+ 回归基线 + run 树归档（`python -m agent.core.trace_export`，跑批 `EVAL_EXPORT_LANGSMITH=1`）+ **实时进度**（`live.py` 事件总线 → SSE `/api/eval/runs/{id}/stream`，指标随执行更新且与最终报告同口径）+ `/api/eval` + CLI `python -m evaluation`；路线见 `docs/agent评测体系构建.md` 与 `evaluation/README.md` |
+| `docs/adr/` + `docs/contracts/` | **架构决策与可读契约（Phase E）** — `adr/0001–0006`（运行内核与状态边界 / LangSmith 追踪与脱敏 / 工具权限与幂等 / prompt 与配置版本化 / 上下文与记忆生命周期 / 评测与发布门禁）；`contracts/`（工具信封、错误码、状态机与 API） |
 | `v1/` | **已弃用归档** — 旧版 LangChain RAG + Agent 实现 |
 | `retrieval/` | **共享检索层** — SparseRetriever + DenseRetriever + Fusion + RetrievalService |
 | `retrieval_orchestrator/` | **离线检索验证框架** — QA 生成 → 多策略检索 → 指标计算 → 最优配置选择 |
@@ -174,10 +189,21 @@ PDF
 | 符号 | 位置 | 作用 |
 |------|------|------|
 | `build_graph()` / `get_agent()` / `run(query, thread_id=)` | `agent/graph.py` | 状态机构建与运行；同 thread_id 保持多轮会话 |
+| `prepare_turn(thread_id, model, mode)` / `get_graph_version()` | `agent/graph.py` | **每轮冻结元数据（Phase E）** — root run id == 本地 `trace_id`，metadata 含身份/预算/prompt 绑定/工具版本/配置 hash；`graph.run` 与 `/api/agent/chat[/stream]` 三条入口共用同一契约 |
+| `ExecutionContext` / `Budget` / `ToolSpec` / `PromptSpec` / `RetryPolicy` / `AgentError` | `agent/core/contracts.py` | **运行时契约** — 错误分类、权限、预算、工具与 prompt 元数据；`AgentError.to_tool_envelope()` 落到既有信封 |
+| `build_execution_context()` / `get_current_execution_context()` / `get_context().child_config()` | `agent/core/execution_context.py` | 上下文工厂与 `contextvars` 传播；**新调用点必须用 `child_config()` 透传父 config**（否则 LangSmith 游离 run） |
+| `ConfigurationSnapshot` / `build_configuration_snapshot()` | `agent/core/configuration.py` | 每轮配置快照（revision/hash/limits/停用工具/prompt 版本/工具注册表 hash）→ LangSmith metadata |
+| `ToolRegistry` / `ToolPolicy` / `ToolGateway` | `agent/core/tool_registry.py`、`agent/core/policy.py`、`agent/core/tool_gateway.py` | **工具唯一入口** — 声明式 ToolSpec、角色权限矩阵、审批判定、幂等键、超时/熔断/重试、脱敏审计（`tool_audit`） |
+| `ContextManager` / `get_context_manager()` | `agent/core/context_pack.py` | 分区预算 Context Pack（invariant/task/conversation/retrieved/memory/reserve）+ 检索去重与 MMR-lite；决策进 `context_decision["pack"]` |
+| `MemoryRecord` / `MemoryPolicy` | `agent/core/memory_policy.py` | 记忆记录（source_ref/confidence/TTL/consent/revision）与过滤策略（`records_from_profile` 适配 `profile.json`） |
+| `export_run_tree()` / `python -m agent.core.trace_export <trace_id>` | `agent/core/trace_export.py` | LangSmith run 树导出到 `eval_output/runs/<trace_id>/langsmith_runs.jsonl`（评测跑批 `EVAL_EXPORT_LANGSMITH=1` 自动导出） |
+| `run_eval()` / `publish()` / `stream_run_events()` / `RunFeed` | `evaluation/runner.py`、`evaluation/live.py` | **评测实时进度** — 每完成一条 QA 发布 `query_finished` + `aggregate`（累计检索/任务/工具/token/成本 + ETA），同时写 `eval_runs` 进度行（`status=running` + `overall.progress`）；`stream_run_events` 是本进程总线 + 跨进程 DB 轮询的同构事件流（SSE/CLI 共用） |
+| `ensure_running_row()` / `upsert_run_row()` / `insert_eval_run()` | `evaluation/runner.py` | 进度行与最终报告同一行（同 run_id 覆盖）：`POST /api/eval/runs` 先落 running 行，跑完被报告覆盖，列表/报告页不做 SSE 也能看实时指标 |
 | `understand_node` `memory_node` `resolve_node` `synthesize_node` `chat_node` `clarify_node` + `route_intent` | `agent/nodes.py` `agent/resolution.py` | 各节点实现 |
 | `decide_mode` / `plan_node` / `executor_node` / `_run_step_agent` / `verify_node` | `agent/plan.py` | plan-and-execute：客户端可经 `state.requested_mode`（`AgentChatRequest.mode`）显式覆盖模式（auto/react/plan）；paper 域步骤=结果单元（无 target），`executor_node` 顺序执行，`_run_step_agent` 是 LLM 逐步执行（一步可多次调工具，预算 `plan_step_max_steps`）；`verify_node` 报表式验证 `verification`（synthesize 消费） |
 | `build_search_subgraph()` | `agent/search_loop.py` | agent↔tools ReAct 循环（step 上限 `state.max_steps` 默认 30，`AGENT_MAX_STEPS`/兼容旧名 `AGENT_MAX_ITERATIONS`；turn 上限 `max_turns` 默认 50） |
-| `ensure_tools()` / `get_cached_tools()` / `reload_tools()` | `agent/tools.py` | 工具装配（builtin + generic + MCP）；配置中心改 MCP/skills/工具开关后 `reload_tools()` 重建（关旧 MCP 连接，新会话生效） |
+| `ensure_tools()` / `get_cached_tools()` / `reload_tools()` / `get_tool_registry()` | `agent/tools.py` | 工具装配（builtin + generic + MCP）；配置中心改 MCP/skills/工具开关后 `reload_tools()` 重建（关旧 MCP 连接，新会话生效）；`get_tool_registry()` 暴露治理元数据快照 |
+| `ToolDispatcher.call()` / `dispatcher.gateway` | `agent/dispatcher.py` | **观察层** — 委托 `ToolGateway` 执行，自身只发 SSE（tool_start/end）与评测事件（tool_call/retrieved_context），一次逻辑调用只计一条 |
 | `config_store`（get/set/set_many + `get_delegate_prefer`/`get_disabled_tools`/`get_disabled_skills`） | `agent/config_store.py` | **配置中心键值存储** — `web/workspace/config.json`（experiment/tools/skills 命名空间，原子写盘）；subagents/skill_provider/coding 消费 |
 | `read_mcp_config_raw`/`write_mcp_config`/`probe_server`/`default_config_path` | `agent/providers/mcp_provider.py` | `.mcp.json` 读写（原子、保留顶层未知键）+ 单 server 试连 |
 | `discover_skills` | `agent/providers/skill_provider.py` | skills 清单公开入口（含停用项，供配置中心 API 组装） |
@@ -212,6 +238,10 @@ PDF
 | HF 下载 / npm / electron | 国内网络卡住 → 镜像源（见 TROUBLESHOOTING） | 通用 + web/frontend |
 | agent 产出空 | subagent 无 final answer → 查 synthesize 节点错误反馈 | agent |
 | 写作「聊天回全文、doc 只落最后一章」 | creator 未落盘 + config 未透传 → 查 TROUBLESHOOTING「写作链路」；修复 = 落盘校验 + 串行 + 进度 synthesize | agent |
+| `verify_smith` / 回读 LangSmith run 老是超时 | langsmith ≥0.8 把 `get_run` **改名为 `read_run`** → 用 `agent.core.trace_export.read_root_run`（两者兼容） | LangSmith / SDK 改名 |
+| 一次性 CLI 正常跑完却不退出 | trace_store 的 aiosqlite / MCP stdio 是非 daemon 线程 → CLI 结尾 `sys.stdout.flush(); os._exit(code)`（`trace_export.main` 的 `_halt` 已内建） | evaluation / CLI 收尾 |
+| `list_dir("agent")` 报 `not a directory` | `web/workspace/settings.json` 的 `project_path` 指向 `data/`（工作区根）→ 自检里用绝对路径，或临时清掉 `project_path`（设置页「通用」）/ 测试里用 `agent/workspace_config.set_override()`（**无环境变量开关**） | agent/tests 工作区根 |
+| 副作用工具被重复执行 | 新调用点绕过了 `ToolGateway`（或用了非幂等的直调）→ 一律走 `dispatcher.call`/gateway，复用幂等键重放 | agent / 工具治理 |
 
 ## Dependencies
 
@@ -325,6 +355,7 @@ C:/Users/30811/miniconda3/envs/demo/python.exe -m web.cli reset --force
 | `/api/config/limits` | GET | 生效执行上限只读展示（max_steps/max_turns/subagents） |
 | `/api/tasks`、`/api/tasks/search` | GET | 统一任务监督视图（派发子 agent 舱 + 实验 + 写作文档 + Redis 后台任务，v12） |
 | `/api/experiments/{project}/manifest` | GET | 项目 manifest（project.json 委托契约）+ 近期实验（对话中心化实验面板用） |
+| `/api/eval/...` | GET/POST | **Agent 评测端** — traces/{id}·thread/{id}（完整链路）、runs 报告/badcases、后台跑批、**SSE 实时进度 `/runs/{id}/stream`（跑批逐条指标、累计聚合、ETA）与 `/single/{id}/stream`（单样例分阶段）**、`/single/start` 非阻塞起跑、from-trace 回流评测集、prune（`web/api/routers/eval.py`） |
 
 ## 离线检索评估
 

@@ -1,0 +1,287 @@
+{
+  "run_id": "run-test",
+  "dataset_id": "sha1-25b6de79f3e5",
+  "status": "done",
+  "query_count": 2,
+  "started_at": "2026-09-15T14:49:09+00:00",
+  "finished_at": "2026-09-15T14:49:10+00:00",
+  "duration_s": 1.7,
+  "metadata": {
+    "commit": "d37ac0f336ee",
+    "model": "qwen-plus",
+    "config_fingerprint": "22a918db",
+    "tools_fingerprint": "d41d8cd9",
+    "dataset_id": "sha1-25b6de79f3e5",
+    "ordering": "tool_call_sequence"
+  },
+  "overall": {
+    "recall@5": 0.75,
+    "precision@5": 0.2,
+    "ndcg@5": 0.8065,
+    "hit@5": 1.0,
+    "recall@10": 0.75,
+    "precision@10": 0.1,
+    "ndcg@10": 0.8065,
+    "hit@10": 1.0,
+    "recall@20": 0.75,
+    "precision@20": 0.05,
+    "ndcg@20": 0.8065,
+    "hit@20": 1.0,
+    "mrr": 1.0,
+    "tool_success_rate": 1.0,
+    "tool_calls": 4,
+    "tool_failures": 0,
+    "task_success_rate": 1.0,
+    "task_success": 2,
+    "task_degraded": 0,
+    "task_failed": 0,
+    "recovery_rate": null,
+    "duration_s": 1.7,
+    "answer_latency_p50_s": 0.01,
+    "answer_latency_p95_s": 0.01,
+    "answer_latency_max_s": 0.01,
+    "cost_usd": 0.001,
+    "tokens_total": 840
+  },
+  "dimension": [
+    {
+      "dimension": "difficulty_level",
+      "value": "unknown",
+      "count": 2,
+      "recall@5": 0.75,
+      "precision@5": 0.2,
+      "ndcg@5": 0.8065,
+      "mrr": 1.0,
+      "recall@10": 0.75,
+      "precision@10": 0.1,
+      "ndcg@10": 0.8065,
+      "recall@20": 0.75,
+      "precision@20": 0.05,
+      "ndcg@20": 0.8065
+    },
+    {
+      "dimension": "content_type",
+      "value": "unknown",
+      "count": 2,
+      "recall@5": 0.75,
+      "precision@5": 0.2,
+      "ndcg@5": 0.8065,
+      "mrr": 1.0,
+      "recall@10": 0.75,
+      "precision@10": 0.1,
+      "ndcg@10": 0.8065,
+      "recall@20": 0.75,
+      "precision@20": 0.05,
+      "ndcg@20": 0.8065
+    },
+    {
+      "dimension": "generation_mode",
+      "value": "unknown",
+      "count": 2,
+      "recall@5": 0.75,
+      "precision@5": 0.2,
+      "ndcg@5": 0.8065,
+      "mrr": 1.0,
+      "recall@10": 0.75,
+      "precision@10": 0.1,
+      "ndcg@10": 0.8065,
+      "recall@20": 0.75,
+      "precision@20": 0.05,
+      "ndcg@20": 0.8065
+    }
+  ],
+  "judge": {},
+  "badcases": [],
+  "tool_metrics": {
+    "per_tool": {
+      "search_papers": {
+        "calls": 2,
+        "ok": 2,
+        "success_rate": 1.0,
+        "p50_ms": 8.0,
+        "p95_ms": 8.0,
+        "max_ms": 8.0,
+        "error_types": {
+          "ok": 2
+        }
+      },
+      "fetch_content": {
+        "calls": 2,
+        "ok": 2,
+        "success_rate": 1.0,
+        "p50_ms": 12.0,
+        "p95_ms": 12.0,
+        "max_ms": 12.0,
+        "error_types": {
+          "ok": 2
+        }
+      }
+    },
+    "per_mode": {
+      "dispatcher": {
+        "calls": 4,
+        "ok": 4,
+        "success_rate": 1.0,
+        "p50_ms": 12.0,
+        "p95_ms": 12.0,
+        "max_ms": 12.0,
+        "error_types": {
+          "ok": 4
+        }
+      }
+    },
+    "badcases": [],
+    "overall": {
+      "calls": 4,
+      "ok": 4,
+      "success_rate": 1.0,
+      "p50_ms": 12.0,
+      "p95_ms": 12.0,
+      "errors": 0
+    }
+  },
+  "task_metrics": {
+    "task_success_rate": 1.0,
+    "query_count": 2,
+    "success": 2,
+    "degraded": 0,
+    "failed": 0,
+    "failed_queries": [],
+    "failures": [],
+    "recovery_rate": null
+  },
+  "baseline_delta": {
+    "because_best": {
+      "recall@5": 0.75,
+      "precision@5": 0.2,
+      "ndcg@5": 0.8065,
+      "hit@5": 1.0,
+      "recall@10": 0.75,
+      "precision@10": 0.1,
+      "ndcg@10": 0.8065,
+      "hit@10": 1.0,
+      "recall@20": 0.75,
+      "precision@20": 0.05,
+      "ndcg@20": 0.8065,
+      "hit@20": 1.0,
+      "mrr": 1.0,
+      "tool_success_rate": 1.0,
+      "task_success_rate": 1.0
+    },
+    "deltas": {
+      "recall@5": {
+        "prev": 0.75,
+        "now": 0.75,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "precision@5": {
+        "prev": 0.2,
+        "now": 0.2,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "ndcg@5": {
+        "prev": 0.8065,
+        "now": 0.8065,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "hit@5": {
+        "prev": 1.0,
+        "now": 1.0,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "recall@10": {
+        "prev": 0.75,
+        "now": 0.75,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "precision@10": {
+        "prev": 0.1,
+        "now": 0.1,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "ndcg@10": {
+        "prev": 0.8065,
+        "now": 0.8065,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "hit@10": {
+        "prev": 1.0,
+        "now": 1.0,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "recall@20": {
+        "prev": 0.75,
+        "now": 0.75,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "precision@20": {
+        "prev": 0.05,
+        "now": 0.05,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "ndcg@20": {
+        "prev": 0.8065,
+        "now": 0.8065,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "hit@20": {
+        "prev": 1.0,
+        "now": 1.0,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "mrr": {
+        "prev": 1.0,
+        "now": 1.0,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "tool_success_rate": {
+        "prev": 1.0,
+        "now": 1.0,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      },
+      "task_success_rate": {
+        "prev": 1.0,
+        "now": 1.0,
+        "delta_pct": 0.0,
+        "flag": "pass"
+      }
+    },
+    "gate": "pass",
+    "warnings": []
+  },
+  "cost": {
+    "prompt_tokens": 600,
+    "completion_tokens": 240,
+    "tokens_total": 840,
+    "cost_usd": 0.001,
+    "estimated_calls": 0,
+    "per_model": {
+      "qwen-plus": {
+        "prompt": 600,
+        "completion": 240,
+        "cost_usd": 0.0009599999999999999
+      }
+    }
+  },
+  "query_durations_s": [
+    0.0,
+    0.0
+  ],
+  "notes": [
+    "ordering=agent tool-call sequence"
+  ]
+}

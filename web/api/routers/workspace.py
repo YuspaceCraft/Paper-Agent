@@ -30,6 +30,7 @@ from agent.workspace_config import get_experiments_path, get_project_root
 router = APIRouter(prefix="/api/workspace", tags=["Workspace"])
 
 _MAX_READ_BYTES = 32_000
+_MAX_LIST_ENTRIES = 2_000
 
 _ALLOWED_ROOTS = {"project", "experiments"}
 
@@ -58,14 +59,25 @@ async def list_workspace(
     p = _resolve(path, root)
     if not p.is_dir():
         raise HTTPException(404, f"not a directory: {path}")
+    all_entries = sorted(
+        p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()),
+    )
     entries = []
-    for e in sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
+    for e in all_entries[:_MAX_LIST_ENTRIES]:
         try:
             size = e.stat().st_size if e.is_file() else None
         except OSError:
             size = None
         entries.append({"name": e.name, "is_dir": e.is_dir(), "size": size})
-    return {"ok": True, "data": {"path": path, "entries": entries}}
+    return {
+        "outcome": "succeeded",
+        "data": {
+            "path": path,
+            "entries": entries,
+            "truncated": len(all_entries) > _MAX_LIST_ENTRIES,
+            "total": len(all_entries),
+        },
+    }
 
 
 @router.get("/read")
@@ -77,16 +89,28 @@ async def read_workspace(
     if not p.is_file():
         raise HTTPException(404, f"not a file: {path}")
     try:
-        raw = p.read_bytes()
+        with p.open("rb") as handle:
+            raw = handle.read(_MAX_READ_BYTES + 1)
+        total = p.stat().st_size
     except OSError as e:
         raise HTTPException(400, f"read failed: {e}")
-    # binary detection: null byte in first 8KB
+    truncated = len(raw) > _MAX_READ_BYTES or total > _MAX_READ_BYTES
+    raw = raw[:_MAX_READ_BYTES]
+    # binary detection: null byte in the bounded sample
     is_binary = b"\x00" in raw[:8192]
     text = raw.decode("utf-8", errors="replace")
-    if len(raw) > _MAX_READ_BYTES:
-        cut = raw[:_MAX_READ_BYTES].decode("utf-8", errors="ignore")
-        text = f"{cut}\n...[truncated — {len(raw)} bytes total, {_MAX_READ_BYTES} shown]"
-    return {"ok": True, "data": {"path": path, "is_binary": is_binary, "content": text}}
+    if truncated:
+        text = f"{text}\n...[truncated — {total} bytes total, {_MAX_READ_BYTES} shown]"
+    return {
+        "outcome": "succeeded",
+        "data": {
+            "path": path,
+            "is_binary": is_binary,
+            "content": text,
+            "truncated": truncated,
+            "size": total,
+        },
+    }
 
 
 @router.get("/browse")
@@ -100,15 +124,23 @@ async def browse_local(
     """
     if not path:
         if os.name != "nt":
-            return {"ok": True, "data": {"path": "", "entries": [{"name": "/", "is_dir": True}]}}
+            return {"outcome": "succeeded", "data": {"path": "", "entries": [{"name": "/", "is_dir": True}]}}
         drives = [f"{c}:\\" for c in string.ascii_uppercase if os.path.exists(f"{c}:\\")]
-        return {"ok": True, "data": {"path": "", "entries": [{"name": d, "is_dir": True} for d in drives]}}
+        return {"outcome": "succeeded", "data": {"path": "", "entries": [{"name": d, "is_dir": True} for d in drives]}}
     p = Path(os.path.expanduser(path))
     if not p.is_dir():
         raise HTTPException(404, f"not a directory: {path}")
-    entries = [
+    all_entries = [
         {"name": e.name, "is_dir": True}
         for e in sorted(p.iterdir())
         if e.is_dir() and not e.name.startswith(".")
     ]
-    return {"ok": True, "data": {"path": str(p), "entries": entries}}
+    return {
+        "outcome": "succeeded",
+        "data": {
+            "path": str(p),
+            "entries": all_entries[:_MAX_LIST_ENTRIES],
+            "truncated": len(all_entries) > _MAX_LIST_ENTRIES,
+            "total": len(all_entries),
+        },
+    }
